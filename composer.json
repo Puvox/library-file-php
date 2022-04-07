@@ -1,5 +1,5 @@
 {
-    "name": "puvox-library",
+    "name": "puvox/library",
     "description": "",
     "require": {
         "php": ">=7.2"
