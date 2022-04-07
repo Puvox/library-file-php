@@ -1,0 +1,7 @@
+{
+    "name": "puvox/library",
+    "description": "",
+    "require": {
+        "php": ">=7.4"
+    }
+}
