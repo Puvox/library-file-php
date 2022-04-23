@@ -21,9 +21,9 @@
 
 namespace Puvox;
 
-if (!class_exists('\\Puvox\\php_library')) 
+if (!class_exists('\\Puvox\\library')) 
 {
-  class php_library
+  class library
   {
 	public function __construct()
 	{ 
