@@ -3,5 +3,14 @@
     "description": "",
     "require": {
         "php": ">=7.2"
-    }
+    },
+    "autoload": {
+        "files": ["library.php"]
+    },
+	"repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/Puvox/library-file-php"
+        }
+	]
 }
