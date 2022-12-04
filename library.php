@@ -1206,6 +1206,9 @@ if (!class_exists('\\Puvox\\library'))
 
 
 	// ##########################
+	public function arrayIndexBy($array, $targetKey){
+		return array_makeKeyedBySubkey($array, $targetKey);
+	}
 	public function array_makeKeyedBySubkey($array, $targetKey){  //this is 2x faster than below
 		return array_column($array, null, $targetKey);
 	}
@@ -2597,18 +2600,18 @@ if (!class_exists('\\Puvox\\library'))
 	// https://medium.com/@dylanwenzlau/500x-faster-caching-than-redis-memcache-apc-in-php-hhvm-dcd26e8447ad
 	// sample ---> https://pastebin_com/0eUvyXaD
 
-	public $cache_object_method='serialize'; //serialize | memcached
-	public function cache_object_get($uniqFileName, $default='', $expire_seconds=86400 )
+	public $cache_object_method='serialize'; //serialize | memcached | apcu
+	public function cache_get_object($uniqFileName, $default='', $expire_seconds=86400 )
 	{
 		if ($this->cache_object_method=='apcu')
 		{
 		}
 		else{
-			$data = $this->cache_file_get($uniqFileName, $default, $expire_seconds, $decode=false);
+			$data = $this->cache_get_file($uniqFileName, $default, $expire_seconds, $decode=false);
 			return unserialize( $data );
 		}
 	}
-	public function cache_object_set($uniqFileName, $content, $throw_exception=true)
+	public function cache_set_object($uniqFileName, $content, $throw_exception=true)
 	{
 		$res=false;
 		if ($this->cache_object_method=='apcu')
@@ -2616,7 +2619,7 @@ if (!class_exists('\\Puvox\\library'))
 			
 		}
 		else{
-			$res = $this->cache_file_set($uniqFileName, serialize($content), false);
+			$res = $this->cache_set_file($uniqFileName, serialize($content), false);
 		}
 		if(!$res && $throw_exception){
 			throw new \Exception('Was unable to set APCU cache for '.$uniqFileName);
@@ -2650,7 +2653,7 @@ if (!class_exists('\\Puvox\\library'))
 		$filePath= $this->cache_dir_get() . $uniqFileName ."_tmp"; //"/". 
 		return $filePath;
 	}
-	public function cache_file_get($uniqFileName, $default='', $expire_seconds=8640000, $decode='array' )
+	public function cache_get_file($uniqFileName, $default='', $expire_seconds=8640000, $decode='array' )
 	{
 		$filePath= $this->cache_file_location($uniqFileName);
 		if ( strlen($filePath) < 3) return "too tiny filename";
@@ -2684,19 +2687,19 @@ if (!class_exists('\\Puvox\\library'))
 			return $default;
 		}
 	}
-	public function cache_file_set($uniqFileName, $content, $encode=true)
+	public function cache_set_file($uniqFileName, $content, $encode=true)
 	{
 		$filePath= $this->cache_file_location($uniqFileName);
 		$contentFinal = ($encode && (is_array($content) || is_object($content)) ) ? json_encode($content): $content;
 		return $this->localdata_set($filePath, $contentFinal);
 	}
 	
-	public function cache_file_append_array($uniqKeyFileName, $data)
+	public function cache_append_array_file($uniqKeyFileName, $data)
 	{    
-		$existing  = $this->cache_file_get($uniqKeyFileName,[]);
+		$existing  = $this->cache_get_file($uniqKeyFileName,[]);
 		$newData   = is_array($data) ? $data : [$data];
 		$finalData = array_merge_recursive($existing,$newData);
-		return $this->cache_file_set($uniqKeyFileName, $finalData);
+		return $this->cache_set_file($uniqKeyFileName, $finalData);
 	}
 
 	public function cacheDirUrl(){ return basename($this->cache_dir_get()); }
@@ -2817,7 +2820,7 @@ if (!class_exists('\\Puvox\\library'))
 
 
 	// usage:  cachedFunction( [$xyzClass,'methodName'], $params, $cache_seconds=60*60*24, "mySitePeopleAges" )
-	public function cachedFunction($callbackFunction, $params=[], $seconds=86400, $UniqCacheName='', $force_on_empty=true){
+	public function cachedFunctionCall($callbackFunction, $params=[], $seconds=86400, $UniqCacheName='', $force_on_empty=true){
 		$fileName = $this->funcStringName($callbackFunction, $params, $seconds, $UniqCacheName);
 		$cache_file = $this->cache_dir_get() .'_'. $fileName ;
 		$call = false;
@@ -2893,7 +2896,7 @@ if (!class_exists('\\Puvox\\library'))
 
 
 	// TODO - handle $_POST
-	public function disable_cache($hard=false, $file=false){
+	public function disable_header_cache($hard=false, $file=false){
 		header("Expires: Mon, 4 Jan 1999 12:00:00 GMT");        // Expired already 
 		header("Last-Modified: ".gmdate("D, d M Y H:i:s")." GMT");     
 		header("Cache-Control: no-cache, must-revalidate");      // good for HTTP/1.1 
@@ -3638,6 +3641,10 @@ if (!class_exists('\\Puvox\\library'))
 	// ################
 	// https://github.com/ttodua/useful-php-scripts/blob/master/get-remote-url-content-data.php 
 	public static function get_remote_data($url, $post_params=null, $request_options=null)	
+	{
+		return self::fetch($url, $post_params, $request_options);
+	}
+	public static function fetch($url, $post_params=null, $request_options=null)	
 	{
 		$func = $post_params ? "wp_remote_post" : "wp_remote_get";
 		$is_wp = (function_exists($func));
