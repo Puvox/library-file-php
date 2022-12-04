@@ -2649,7 +2649,7 @@ if (!class_exists('\\Puvox\\library'))
 	// ### CACHE FILES ###
 	public function cache_file_location($uniqFileName){
 		$uniqFileName = is_string($uniqFileName) || is_numeric($uniqFileName) ? $uniqFileName : json_encode($uniqFileName);
-		$uniqFileName = self::sanitize( substr($uniqFileName, 0, 10)) + "_"+ md5($uniqFileName);
+		$uniqFileName = self::sanitize( substr($uniqFileName, 0, 10)) . "_" . md5($uniqFileName);
 		$filePath= $this->cache_dir_get() . $uniqFileName ."_tmp"; //"/". 
 		return $filePath;
 	}
