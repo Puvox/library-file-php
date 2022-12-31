@@ -2630,7 +2630,7 @@ if (!class_exists('\\Puvox\\library'))
 
 
 	// ### CACHE DIRS ###
-	private $cacheDirectory = __DIR__.'/_caches_php/';  //sys_get_temp_dir()
+	private $cacheDirectory = __DIR__.'/_cache/';  //sys_get_temp_dir()
 	public function cache_dir_set($dir=null, $auto_clear_seconds=null){ 
 		if($dir)  $this->cacheDirectory = $dir;
 		$res = $this->mkdir($this->cacheDirectory);
@@ -2651,9 +2651,9 @@ if (!class_exists('\\Puvox\\library'))
 		$uniqFileName = is_string($uniqFileName) || is_numeric($uniqFileName) ? $uniqFileName : json_encode($uniqFileName);
 		$uniqFileName = self::sanitize( substr($uniqFileName, 0, 10)) . "_" . md5($uniqFileName);
 		$filePath= $this->cache_dir_get() . $uniqFileName ."_tmp"; //"/". 
-		return $filePath;
+		return $this->realpath($filePath);
 	}
-	public function cache_get_file($uniqFileName, $default='', $expire_seconds=8640000, $decode='array' )
+	public function cache_get_file($uniqFileName, $default='', $expire_seconds=8640000)
 	{
 		$filePath= $this->cache_file_location($uniqFileName);
 		if ( strlen($filePath) < 3) return "too tiny filename";
@@ -2664,23 +2664,7 @@ if (!class_exists('\\Puvox\\library'))
 				return $default;
 			}
 			else{	
-				$cont = $this->file_get_contents($filePath);
-				// if specifically array, then on empty, reckon as array
-				if (empty($cont) && $default==[])
-				{
-					return $default;
-				}
-				if ($decode){
-					try{
-						return json_decode($cont, ($decode=='array'));
-					}
-					catch(\Exception $ex){
-						return $cont;
-					}
-				}
-				else{
-					return $cont;
-				}
+				return $this->file_get_contents($filePath);
 			}
 		}
 		else {
@@ -3551,36 +3535,47 @@ if (!class_exists('\\Puvox\\library'))
 
 
 	#region ### TELEGRAM FUNCTIONS ###
-	// public function telegram($text) { return $helpers->telegram_message( ['chat_id'=>'-1001234567890', 'text'=>$text, 'parse_mode'=>'html', 'disable_web_page_preview'=>true ],   $bot_key ); }          | resp: pastebin_com/u0J1Cph3
-	public function telegram_message($array, $botid, $repeated_call=false){
-		$array['disable_web_page_preview'] = array_key_exists('disable_web_page_preview', $array) ?  $array['disable_web_page_preview'] : true;
-		$array['text'] = $this->br2nl($array['text']);
-		$array['text'] = strip_tags($array['text'],'<b><strong><i><em><u><ins><s><strike><del><a><code><pre>'); // allowed: https://core.telegram.org/bots/api#html-style
-		$array['text'] = substr($array['text'],0,4095); //max telegram message length 4096
-		$res = $this->get_remote_data_array( ['url'=>'https://api.telegram.org/bot'.$botid.'/sendMessage', 'post'=> $array], true );  //'sendMessage?'.http_build_query($array, '');
-		if (!$res->error){
-			$answer = $res->response;
-			$response = json_decode($answer);
+	public function telegram_message($text, $chat_id, $bot_key, $extra_opts = []){
+		$is_repeated_call = false;
+		if (array_key_exists('is_repeated_call', $extra_opts)){
+			unset($extra_opts['is_repeated_call']);
+			$is_repeated_call = true;
+		}
+		if (!array_key_exists('parse_mode', $extra_opts)){
+			$extra_opts['parse_mode'] = 'html';
+		}
+		if (!array_key_exists('disable_web_page_preview', $extra_opts)){
+			$extra_opts['disable_web_page_preview'] = true;
+		}
+		// whether it's without `-100` prefix
+		$chat_id = strval($chat_id);
+		if (!$this->startsWith($chat_id, '-100')) $chat_id = '-100' . $chat_id;
+		$text = $this->br2nl($text);
+		$text = strip_tags($text,'<b><strong><i><em><u><ins><s><strike><del><a><code><pre>'); // allowed: https://core.telegram.org/bots/api#html-style
+		$text = substr($text,0,4095); //max telegram message length 4096
+		$post_opts = array_merge(['chat_id'=>$chat_id, 'text'=>$text], $extra_opts);
+		$responseText = $this->get_remote_data( ['url'=>'https://api.telegram.org/bot'.$bot_key.'/sendMessage', 'post'=> $post_opts]);  // pastebin_com/u0J1Cph3  //'sendMessage?'.http_build_query($opts, '');
+		try {
+			$responseJson = json_decode($responseText);
 			// if it was successfull
-			if ($response->ok)
+			if ($responseJson->ok)
 			{
-				return $response;
+				return $responseJson;
 			}
+			// for some reason, if still unsupported format submitted, resubmit the plain format
 			//i.e. {"ok":false,"error_code":400,"description":"Bad Request: can't parse entities: Unsupported start tag \"br/\" at byte offset 43"}
 			else{
-				// for some reason, if still unsupported format submitted, resubmit the plain format
-				$txt = "Bad Request: can't parse entities";
-				if( stripos($response->description, $txt) !==false ){
-					$array['text'] = "[SecondSend] \r\n". strip_tags($array['text']) ;
-					if ( ! $repeated_call ){
-						return $this->telegram_message($array, $botid, true);
+				if (stripos($responseJson->description, 'Bad Request: can\'t parse entities') !==false){
+					if (! $is_repeated_call){
+						$text = "[SecondSend with stipped tags] \r\n". strip_tags($text) ;
+						$extra_opts['is_repeated_call'] = true;
+						return $this->telegram_message($text, $chat_id, $bot_key, $extra_opts);
 					}
 				}
-				return $response;
-			} 
-		}	
-		else{
-			return (object)['ok'=> false, 'description'=> $res ];
+				return $responseJson;
+			}
+		} catch (Exception $ex) {
+			return ['ok'=>false, 'description'=> $ex->getMessage() . ':::' . $responseText];
 		}
 	}
 
@@ -6313,23 +6308,6 @@ if (!class_exists('\\Puvox\\library'))
 		});
 	}
 
-
-
-	// remove library file on uninstall
-	public function add_default_uninstall(){
-		if( is_admin() && !$this->is_development)
-		{
-			$wp_uninstall_file = $this->baseDIR.'/uninstall.php';
-			if( !file_exists($wp_uninstall_file) )
-			{
-				$content='<'.'?php
-				// If uninstall not called from WordPress, then exit
-				if ( ! defined( "WP_UNINSTALL_PLUGIN" ) ) exit; 
-				';
-				@$this->file_put_contents($wp_uninstall_file, $content);
-			}
-		}
-	}
 
 	public function js_debugmode($name='debugmode')
 	{
