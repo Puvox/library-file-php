@@ -21,13 +21,25 @@
 
 namespace Puvox;
 
-if (!class_exists('\\Puvox\\library')) 
+if (!class_exists('\\Puvox\\library')) {
+class library
 {
-  class library
-  {
 	public function __construct()
-	{ 
+	{
+		$this->file = new \Puvox\tempclass_file($this);
+		$this->cache = new \stdClass();
+		$this->cache->file = new \Puvox\tempclass_cache_file($this);
 		$this->init_defaults();
+	}
+
+	private $privateAppName__ = null;
+	public function set_app_name ($name){ $this->privateAppName__ = $name; }
+
+	public function get_app_name() { 
+		if (!$this->privateAppName__){
+			throw new \Exception ('Before you start using caching functions, please at first define your appplication\'s name(identifier) at first with .->set_app_name ("whatever_my_app_name"), so it will get its own cache-storage');
+		}
+		return $this->privateAppName__; 
 	}
 	
 	public function constantX($val)           { return (defined($val) ? constant($val) : (!is_null($val) ? $val : false ) );}
@@ -392,7 +404,8 @@ if (!class_exists('\\Puvox\\library'))
 		}
 	}
 	
-	public function timeMS(){ return round(microtime(true)*1000); }
+	public static function timeMS(){ return self::milliseconds(); }
+	public static function milliseconds(){ return round(microtime(true)*1000); }
 	
 	public function toString($inp){
 		return $inp."";
@@ -556,57 +569,6 @@ if (!class_exists('\\Puvox\\library'))
 	public function link($link, $text){ return $this->href_url($link, $text);  }
 	public function href_url($link, $text){ return '<a href="'.$link.'" target="_blank">'.$text.'</a>'; }
 	public function href($link, $text){ return $this->href_url($link, $text); }
-
-	public function mkdir($dest, $permissions=0755, $create=true){ return $this->mkdir_recursive($dest, $permissions, $create); }
-	public function mkdir_recursive($dest, $permissions=0755, $create=true){
-		if(!is_dir($dest)){
-			//at first, recursively create parent directory if doesn't exist
-			$parent = dirname($dest);
-			if( !is_dir($parent ) ){ $this->mkdir_recursive($parent, $permissions, $create); }
-			else {
-				if ( is_writable( $parent ) ){
-					return mkdir($dest, $permissions, $create); 
-				}
-				else{
-					var_dump("This plugin don't have permission to create directory: $parent");
-					return false;
-				}
-				
-			}
-		}
-		else{return true;}
-	}
-
-	public function rmdir($dirPath){ return $this->rmdir_recursive($dirPath); }
-	public function rmdir_recursive($dirPath){
-		if(!empty($dirPath) && is_dir($dirPath) ){
-			$dir  = new \RecursiveDirectoryIterator($dirPath, \RecursiveDirectoryIterator::SKIP_DOTS); //upper dirs not included,otherwise DISASTER HAPPENS :)
-			$files = new \RecursiveIteratorIterator($dir, \RecursiveIteratorIterator::CHILD_FIRST);
-			foreach ($files as $path) $path->isDir() && !$path->isLink() ? rmdir($path->getPathname()) : unlink($path->getPathname()); //{if (is_file($path)) {unlink($path);} else {$empty_dirs[] = $path;} } if (!empty($empty_dirs)) {foreach ($empty_dirs as $eachDir) {rmdir($eachDir);}} 
-			rmdir($dirPath);
-			return true;
-		}
-		return true;
-		//include_once(ABSPATH.'/wp-admin/includes/class-wp-filesystem-base.php');
-		//\WP_Filesystem_Base::rmdir($fullPath, true);
-	}
-	public function emptyDir($dirPath){
-		return array_map( 'unlink', array_filter((array) glob("$dirPath/*") ) );
-	}
-	
-	public function copy_recursive($source, $dest, $permissions = 0755){
-		if (is_link($source))	{ return symlink(readlink($source), $dest); }
-		elseif (is_file($source))	{ 
-			if(!file_exists(dirname($dest))){$this->mkdir_recursive(dirname($dest), $permissions, true); }
-			if(!copy($source, $dest)) {echo "not copied ($source ---> $dest )";} return true; 
-		}
-		elseif (is_dir($source))	{ 
-			$this->mkdir_recursive($dest, $permissions, true); 
-			foreach (glob($source.'/*') as $each){	$basen= basename($each);
-				if ($basen != '.' && $basen != '..') { $this->copy_recursive("$each", "$dest/$basen", $permissions);	}
-			}
-		}
-	}
 
     // ##### CUSTOM OPTIONS #####
 	public function optsNameX1(){ return 'all_options_'.$this->module_NAMESPACE; }
@@ -2450,415 +2412,6 @@ if (!class_exists('\\Puvox\\library'))
 	}
 
 	
-	
-
-
-	#region ################  CACHE ###############
-	public $CACHE_CHOSEN_PROGRAM= 'redis';
-	public function cache_get($key, $default=null){
-		return call_user_func([$this, "cache_get_{$this->CACHE_CHOSEN_PROGRAM}"], $key, $default);
-	}
-	public function cache_set($key, $data, $seconds = 8640000){
-		return call_user_func([$this, "cache_set_{$this->CACHE_CHOSEN_PROGRAM}"], $key, $data, $seconds);
-	}
-	public function cache_append($key, $data, $seconds = 8640000){
-		$existing_arr = call_user_func([$this, "cache_get_{$this->CACHE_CHOSEN_PROGRAM}"], $key, []);
-		$new  = $this->is_array($existing_arr) ? $this->array_merge($existing_arr,$data) : $existing_arr. $data;
-		$final_value  = ($this->is_simple_type($new) ? $new : serialize($new));
-		return call_user_func([$this, "cache_set_{$this->CACHE_CHOSEN_PROGRAM}"], $key, $final_value, $seconds);
-	}
-
-	#region ### phpRedis (better than "pRedis" ) [edit: 02mxypZ1 ] ###
-	public $redis_host_params = [
-		'host' => '127.0.0.1',
-		'port' => 6379,
-		'connectTimeout' => 2.5,
-		'db_index' => 0,
-		'auth' => ['', ''],
-		'ssl' => ['verify_peer' => false],
-	];
-	public $redis_keys_prefix='';
-	public $redis_instance = null; 
-	public $redis_default_key_pre = ':';
-	public function cache_get_redis($key, $default=null){
-		$this->helper_cache_redis_init_check($this->redis_host_params, true);
-		$key = $this->redis_keys_prefix . $key; 
-		$redis = $this->helper_redis_getInstance();
-		$val = $redis->get($key);
-		$this->helper_redis_IfSwooleCloseNeeded($redis);
-		if (!$val)
-			return $default;
-		return (self::is_serialized($val) ? unserialize($val) : $val);
-	}
-	public function cache_set_redis($key, $data, $seconds = 8640000){
-		$this->helper_cache_redis_init_check($this->redis_host_params, true);
-		$key = $this->redis_keys_prefix . $key;
-		$redis =$this->helper_redis_getInstance();
-		$result = $redis->set($key, ($this->is_simple_type($data) ? $data : serialize($data)), $seconds );
-		$this->helper_redis_IfSwooleCloseNeeded($redis);
-		return $result;
-	} 
-	// public function cache_append_redis($key, $data, $seconds = 8640000){
-	// 	$this->helper_cache_redis_init($this->redis_host);
-	// 	$existing_arr = $this->cache_get_redis($key,[]);
-	// 	$new  = $this->is_array($existing_arr) ? $this->array_merge($existing_arr,$data) : $existing_arr. $data;
-	// 	$final_value  = ($this->is_simple_type($new) ? $new : serialize($new));
-	// 	return $this->cache_set_redis($key, $final_value, $seconds);
-	// }
-	public function cache_clear_redis(){
-		$this->helper_cache_redis_init_check($this->redis_host_params, true);
-		$this->helper_redis_getInstance()->flushAll();
-	}
-	// helpers, with added swoole support
-	private $redis_pool=null;   private $redis_start_inited=false;
-	public function helper_cache_redis_init($host_params, $use_params=false){
-		try{ 
-			if (self::swoole_inside_coroutine()){
-				if ( is_null($this->redis_pool) ){
-					$authString = !empty($host_params['auth'][0]) ? $host_params['auth'][0].':'.$host_params['auth'][1] : '';
-					$newR = (new \Swoole\Database\RedisConfig)->withHost($host_params['host'])->withPort($host_params['port'])->withAuth($authString)->withDbIndex($host_params['db_index'])->withTimeout($host_params['connectTimeout']);
-					$this->redis_pool = new \Swoole\Database\RedisPool( $newR );
-					$this->redis_instance= $this->helper_redis_getInstance(); 
-				}
-			}
-			else {
-				if ( is_null($this->redis_instance) ){
-					$this->redis_instance= new \Redis(); 
-					$this->redis_instance->connect( $host_params['host'], $host_params['port']); 
-					if ($use_params)
-					{
-						// SERIALIZER_NONE | SERIALIZER_PHP | SERIALIZER_IGBINARY | SERIALIZER_MSGPACK );
-						$this->redis_instance->setOption(\Redis::OPT_SERIALIZER, \Redis::SERIALIZER_PHP);
-						$this->redis_instance->setOption(\Redis::OPT_PREFIX, __NAMESPACE__. $this->redis_default_key_pre);	// use custom prefix on all keys
-					}
-				} 
-			}
-			if ($use_params)
-				$this->redis_keys_prefix = $this->slug .'_';
-		}
-		catch(\Exception $ex){
-			if (get_class($ex)==="RedisException"){
-				if (!$this->redis_start_inited){
-					$this->redis_start_inited=true;
-					if(method_exists($this,'helper_redis_try_os_start')) $this->helper_redis_try_os_start();
-					sleep(1);
-					$this->helper_cache_redis_init($host_params);
-				}
-			}
-		}
-	} 
-	public function helper_cache_redis_init_check($host_params, $use_params=false){
-		if(is_null($this->redis_instance))
-			$this->helper_cache_redis_init($host_params, $use_params);
-	}
-
-	public function helper_redis_getInstance()
-	{
-		return (self::swoole_inside_coroutine() ? $this->redis_pool->get() : $this->redis_instance);
-	} 
-	public function helper_redis_getAllKeys($redis_instance)
-	{
-		$keys=[];
-		$it = NULL;
-		do {
-			$arr_keys = $redis_instance->scan($it);
-			if ($arr_keys !== FALSE) {
-				foreach($arr_keys as $str_key) {
-					$keys[]= $str_key;
-				}
-			}
-		} while ($it > 0);
-		return $keys;
-	} 
-	           
-	public function helper_redis_IfSwooleCloseNeeded($redis_instance)
-	{
-		if ( self::swoole_inside_coroutine() ){
-			$this->redis_pool->put($redis_instance);
-		}
-	}
-	#endregion 
-
-	// ##### memcached: todo #####
-	//
-	//
-	//
-	//
-	//
-	//
-
-	// ##### apcu: todo ##### (examples: https://pastebin_com/0Q5y28fA)
-	//
-	//
-	//
-	//
-	//
-	//
-
-
-	// ####################### OBJECTS ####################### //
-	// https://medium.com/@dylanwenzlau/500x-faster-caching-than-redis-memcache-apc-in-php-hhvm-dcd26e8447ad
-	// sample ---> https://pastebin_com/0eUvyXaD
-
-	public $cache_object_method='serialize'; //serialize | memcached | apcu
-	public function cache_get_object($uniqFileName, $default='', $expire_seconds=86400 )
-	{
-		if ($this->cache_object_method=='apcu')
-		{
-		}
-		else{
-			$data = $this->cache_get_file($uniqFileName, $default, $expire_seconds, $decode=false);
-			return unserialize( $data );
-		}
-	}
-	public function cache_set_object($uniqFileName, $content, $throw_exception=true)
-	{
-		$res=false;
-		if ($this->cache_object_method=='apcu')
-		{
-			
-		}
-		else{
-			$res = $this->cache_set_file($uniqFileName, serialize($content), false);
-		}
-		if(!$res && $throw_exception){
-			throw new \Exception('Was unable to set APCU cache for '.$uniqFileName);
-		}
-		return $res;
-	}
-
-
-
-	// ### CACHE DIRS ###
-	private $cacheDirectory = __DIR__.'/_cache/';  //sys_get_temp_dir()
-	public function cache_dir_set($dir=null, $auto_clear_seconds=null){ 
-		if($dir)  $this->cacheDirectory = $dir;
-		$res = $this->mkdir($this->cacheDirectory);
-		if( !is_null($auto_clear_seconds))
-		{
-			$this->clearCacheDir($auto_clear_seconds); 
-		}
-		return $res;
-	}
-	public function cache_dir_get($create=true){ 
-		$dir = $this->cacheDirectory;
-		if($create && !is_dir($dir)){ $this->mkdir($dir); }
-		return $dir; 
-	}	 
-
-	// ### CACHE FILES ###
-	public function cache_file_location($uniqFileName){
-		$uniqFileName = is_string($uniqFileName) || is_numeric($uniqFileName) ? $uniqFileName : json_encode($uniqFileName);
-		$uniqFileName = self::sanitize( substr($uniqFileName, 0, 10)) . "_" . md5($uniqFileName);
-		$filePath= $this->cache_dir_get() . $uniqFileName ."_tmp"; //"/". 
-		return $this->realpath($filePath);
-	}
-	public function cache_get_file($uniqFileName, $default='', $expire_seconds=8640000)
-	{
-		$filePath= $this->cache_file_location($uniqFileName);
-		if ( strlen($filePath) < 3) return "too tiny filename";
-
-		if ( file_exists($filePath) ){
-			if (filemtime($filePath)+$expire_seconds<time() ){
-				unlink($filePath);
-				return $default;
-			}
-			else{	
-				return $this->file_get_contents($filePath);
-			}
-		}
-		else {
-			return $default;
-		}
-	}
-	public function cache_set_file($uniqFileName, $content, $encode=true)
-	{
-		$filePath= $this->cache_file_location($uniqFileName);
-		$contentFinal = ($encode && (is_array($content) || is_object($content)) ) ? json_encode($content): $content;
-		return $this->localdata_set($filePath, $contentFinal);
-	}
-	
-	public function cache_append_array_file($uniqKeyFileName, $data)
-	{    
-		$existing  = $this->cache_get_file($uniqKeyFileName,[]);
-		$newData   = is_array($data) ? $data : [$data];
-		$finalData = array_merge_recursive($existing,$newData);
-		return $this->cache_set_file($uniqKeyFileName, $finalData);
-	}
-
-	public function cacheDirUrl(){ return basename($this->cache_dir_get()); }
-	public function backupFileIntoCache($filename, $data){
-		$filename = $this->cache_dir_get() .'/'. $filename . date('Y-m-d H-i-s') . "_".md5($data);
-		$this->localdata_set($filename, is_array($data) ? json_encode($data) : $data );
-	}
-
-	// ####################### IDs ####################### //
-	public $cached_IDS_type = 'file'; // file, wp, db, object (using redis or whatever, according to $CACHE_CHOSEN_PROGRAM) //$this->isWP; 
-	public function cache_key_create($text){return md5( is_array($text) ? json_encode($text) : $text );	}
- 
-	// ########
-	private function cache_ids_parentname($containerHint){ return "_px_cached_ids_".$containerHint;} 
-	private function get_cached_ids_array($containerHint){
-		$ContainerName = $this->cache_ids_parentname($containerHint);
-		if ($this->cached_IDS_type=='file'){
-			$filePath =$this->cache_dir_get() . $ContainerName;
-			if ( empty($this->temp_cacheIdsArray) || empty($this->temp_cacheIdsArray[$filePath]) ) {
-				$cont = $this->file_get_contents( $filePath );
-				if ( empty($cont) ) {
-					$this->temp_cacheIdsArray[$filePath] = [];
-				}
-				else {
-					$this->temp_cacheIdsArray[$filePath] = json_decode($cont,true);
-					//if error happened
-					if (is_null($this->temp_cacheIdsArray[$filePath])){
-						//if contains broken array due to rare overwrite problem, i.e. ["id_1"],"id2","id3"]
-						if ($this->contains($cont, $delimiter = '"')){
-							$arrs=$this->string_to_array($cont, $delimiter);
-							$this->temp_cacheIdsArray[$filePath]=$arrs;
-						}
-					}
-				}
-			}
-			$existing_ids = $this->temp_cacheIdsArray[$filePath];
-		}
-		elseif ($this->cached_IDS_type=='wp'){
-			$existing_ids = get_option( $ContainerName, [] );
-		}
-		elseif ($this->cached_IDS_type=='object'){
-			$existing_ids = $this->cache_get( $ContainerName, [] );
-		}
-		return $existing_ids;
-	}
-	private function set_cached_ids_array($containerHint, $existing_ids){
-		$ContainerName = $this->cache_ids_parentname($containerHint);
-		if ($this->cached_IDS_type=='file'){
-			$filePath = $this->cache_dir_get() . $ContainerName;
-			$this->temp_cacheIdsArray[$filePath] = $existing_ids;
-			$this->localdata_set( $filePath, json_encode($existing_ids) );
-		}
-		elseif ($this->cached_IDS_type=='wp'){
-			update_option( $ContainerName, $existing_ids );
-		}
-		elseif ($this->cached_IDS_type=='redis'){
-			$this->cache_set( $ContainerName, $existing_ids);
-		}
-	}
-
-	private function add_cached_id($containerHint, $cache_id){
-		$ContainerName = $this->cache_ids_parentname($containerHint);
-		//to ensure to preserve any overwrites happened within last few milliseconds
-		$latest_current_ids = $this->get_cached_ids_array($containerHint); //
-		//$recently_added_ids = array_diff($latest_current_ids, $added_ids);
-		//$up_to_date_IDS = array_merge($existing_ids, $recently_added_ids); 
-		$latest_current_ids[]=$cache_id;
-		$this->set_cached_ids_array($containerHint, $latest_current_ids);
-	}
-
-	public function is_cached_id($cache_parent_key, $item_key_or_params){  
-		$key = is_array($item_key_or_params) ? json_encode($item_key_or_params) : $item_key_or_params;
-		$key = strlen($key) <=35 ? $key : md5($key); //if same length as md5, then prefer original readable key
-		if( in_array($key, $this->get_cached_ids_array($cache_parent_key) ) )
-		{
-			return true;
-		}
-		else{
-			$this->add_cached_id($cache_parent_key, $key);
-			return false;
-		}
-	}
-	public function clearCacheIdsOnCall($param_name){ 
-		if (isset($_GET[$param_name]))
-		{
-			$this->clearCacheIds('todo');
-		}
-	}
-	public function clearCacheIds($key_name){ 
-		$key_fullname = $this->cache_ids_parentname($key_name);
-		if ($this->cached_IDS_type=='local'){
-			$this->rmdir($this->cache_dir_get());
-			$this->mkdir($this->cache_dir_get());
-		}
-		elseif ($this->cached_IDS_type=='wp'){
-			update_option( $this->cache_ids_parentname($key_name), []);
-		}
-		elseif ($this->cached_IDS_type=='object'){
-			$this->cache_set( $key_fullname, []);
-		}
-		else {
-		}
-	}
-	public function clearCacheDir($seconds=86400){
-		$timerFile= $this->cache_dir_get().'/_cleanTime.blobz';
-		if (file_exists($timerFile) && filemtime($timerFile)<time()-$seconds){
-			array_map( 'unlink', array_filter((array) glob( $this->cache_dir_get()."*") ) );
-			$this->localdata_set($timerFile, time());
-		}
-		else{
-			$this->localdata_set($timerFile, time());
-		}
-	} 
-	
-	public function cacheDirLink(){
-		return $this->baseURL .'/'. $this->cacheDirUrl() .'/';
-	}
-
-
-	// usage:  cachedFunction( [$xyzClass,'methodName'], $params, $cache_seconds=60*60*24, "mySitePeopleAges" )
-	public function cachedFunctionCall($callbackFunction, $params=[], $seconds=86400, $UniqCacheName='', $force_on_empty=true){
-		$fileName = $this->funcStringName($callbackFunction, $params, $seconds, $UniqCacheName);
-		$cache_file = $this->cache_dir_get() .'_'. $fileName ;
-		$call = false;
-		//if ( $this->isWpCache() )
-		//{
-		//}
-		
-		if ( $seconds<=0 || $this->forceNewCache || !file_exists($cache_file) || time() - filemtime($cache_file) > $seconds )  
-		{
-			$call=true;
-		}
-		else{
-			$cont = $this->file_get_contents($cache_file);
-			if ($cont=="" && $force_on_empty){
-				$call=true;
-			}
-			else{
-				$response = $cont;
-			}
-		}
-		//
-		if($call){
-			$response = call_user_func_array($callbackFunction, $params);
-			$this->localdata_set($cache_file, is_array($response) || is_object($response) ? json_encode($response) : $response );
-		}
-
-		try{
-			return is_array($response) || is_object($response) || ! is_string($response) ? $response : json_decode($response);
-		}
-		catch(\Exception $e)
-		{
-			return $response;
-		}
-	}
-	
-	public function funcStringName($callbackFunction, $params, $seconds, $fixedName='')
-	{ 
-		if (!empty($fixedName))  
-			return $fixedName; 
-		$funcSlug = is_array($callbackFunction) && is_object($callbackFunction[0]) ? get_class($callbackFunction[0])."_".$callbackFunction[1] : (is_string($callbackFunction) ? $callbackFunction : md5(json_encode($callbackFunction)));
-		$funcAliasString= md5( basename( $funcSlug ."_". md5(json_encode($params)) . "_". $seconds ) );
-		return $funcAliasString; 
-	}
-
-	public function transientFunction($callbackFunction, $params=[], $seconds=86400, $transientName=''){
-		$transientName = $this->funcStringName($callbackFunction, $params, $seconds, $transientName) ;
-		if( ($value = get_transient($transientName))===false ) { 
-			$value = call_user_func_array($callbackFunction, $params);
-			set_transient($transientName, $value, $seconds);
-		}
-		return $value;
-	}
-	#endregion  ################ CACHE ALL ################
-	
 
 
 	//from Wordpress codex
@@ -3064,7 +2617,8 @@ if (!class_exists('\\Puvox\\library'))
 	
 	public static function sanitize($key){ return preg_replace( '/[^a-zA-Z0-9_\-]/', "_", trim($key) ); }
 	public static function sanitize_key($key, $use_dash=false ){ return preg_replace( '/[^a-z0-9_\-]/', ($use_dash===true ? "_": (is_string($use_dash) ? $use_dash: "") ), strtolower(trim($key) )); }  //same as wp
-	public static function sanitize_key_($key, $use_dash=true ){ return self::str_replace_recursive( "__","_",  self::sanitize($key, $use_dash) ); }
+	public static function sanitize_key_($key){ return self::sanitize_key_dashed($key); }
+	public static function sanitize_key_dashed($str){ return self::str_replace_recursive('__', '_',  self::sanitize($str, true) ); }
 	public static function sanitize_text($str,$use_dash=false) { return preg_replace("/[^a-zA-Z0-9\!\@\#\$\%\^\&\*\(\)\-\_\+\=\,\.\/\?\;\[\]\{\}\|\s]+/", ($use_dash ? "_":""), trim($str)); }	 //  \= \/ 
 	//Try this to remove everything except a-z, A-Z and 0-9, -, _, .
 	public static function sanitize_nonoword($text)		{ return preg_replace('/\W/si','',$text); }   
@@ -3115,7 +2669,7 @@ if (!class_exists('\\Puvox\\library'))
 
 	public static function sanitize_comma_array($string, $type="key")
 	{
-		$values = explode(',', $this->sanitize_text_field($string));
+		$values = explode(',', self::sanitize_text_field($string));
 		$sanitized_values = $values;
 		$sanitized_values = array_map('sanitize_key', $sanitized_values);
 		$sanitized_values = array_map('trim', $sanitized_values);
@@ -3365,15 +2919,19 @@ if (!class_exists('\\Puvox\\library'))
 
 	
 	// ### substr shorthands:
-	public function charsFromStart($word, $amount)
+	public function charsFromStart($word, $amount) { return self::chars_from_start($word, $amount); }
+	public function charsFromEnd($word, $amount) { return self::chars_from_end($word, $amount); }
+	public function charsWithoutStartEnd($word, $removeFromStart, $removeFromEnd) { return self::chars_without_stard_end($word, $removeFromStart, $removeFromEnd); }
+
+	public static function chars_from_start($word, $amount)
 	{
 		return substr($word, 0, $amount);
 	}
-	public function charsFromEnd($word, $amount)
+	public function chars_from_end($word, $amount)
 	{
 		return substr($word, -$amount);
 	}
-	public function charsWithoutStartEnd($word, $removeFromStart, $removeFromEnd)
+	public function chars_without_stard_end($word, $removeFromStart, $removeFromEnd)
 	{
 		return substr($word, $removeFromStart, -$removeFromEnd);
 	}
@@ -3425,10 +2983,10 @@ if (!class_exists('\\Puvox\\library'))
 
 	public static function contains($content, $needle, $case_sens=true, $position='any'){ 
 		if ($position==='start'){
-			return $this->startsWith($content, $needle, $case_sens);
+			return self::startsWith($content, $needle, $case_sens);
 		}
 		elseif ($position==='end'){
-			return $this->endsWith($content, $needle, $case_sens);
+			return self::endsWith($content, $needle, $case_sens);
 		}
 		else{
 			return ($case_sens ? strpos($content, $needle)!==false : stripos($content, $needle)) !== false;
@@ -3536,11 +3094,7 @@ if (!class_exists('\\Puvox\\library'))
 
 	#region ### TELEGRAM FUNCTIONS ###
 	public function telegram_message($text, $chat_id, $bot_key, $extra_opts = []){
-		$is_repeated_call = false;
-		if (array_key_exists('is_repeated_call', $extra_opts)){
-			unset($extra_opts['is_repeated_call']);
-			$is_repeated_call = true;
-		}
+		$is_repeated_call = array_key_exists('is_repeated_call', $extra_opts);
 		if (!array_key_exists('parse_mode', $extra_opts)){
 			$extra_opts['parse_mode'] = 'html';
 		}
@@ -3553,8 +3107,9 @@ if (!class_exists('\\Puvox\\library'))
 		$text = $this->br2nl($text);
 		$text = strip_tags($text,'<b><strong><i><em><u><ins><s><strike><del><a><code><pre>'); // allowed: https://core.telegram.org/bots/api#html-style
 		$text = substr($text,0,4095); //max telegram message length 4096
-		$post_opts = array_merge(['chat_id'=>$chat_id, 'text'=>$text], $extra_opts);
-		$responseText = $this->get_remote_data( ['url'=>'https://api.telegram.org/bot'.$bot_key.'/sendMessage', 'post'=> $post_opts]);  // pastebin_com/u0J1Cph3  //'sendMessage?'.http_build_query($opts, '');
+		$requestOpts = array_merge(['chat_id'=>$chat_id, 'text'=>$text], $extra_opts);
+		unset($requestOpts['is_repeated_call']);
+		$responseText = $this->get_remote_data( ['url'=>'https://api.telegram.org/bot'.$bot_key.'/sendMessage', 'post'=> $requestOpts]);  // pastebin_com/u0J1Cph3  //'sendMessage?'.http_build_query($opts, '');
 		try {
 			$responseJson = json_decode($responseText);
 			// if it was successfull
@@ -3579,7 +3134,7 @@ if (!class_exists('\\Puvox\\library'))
 		}
 	}
 
-	public $telegram_interval_ms = 40; //~30 times per second, so we'd better 40ms
+	public $telegram_interval_ms = 50; // telegram seems to accept around 30 times per second, so we'd better wait around that milliseconds
 	private $telegram_last_time=0;
 
 	public function telegram_message_cached($array, $botid){
@@ -3599,7 +3154,7 @@ if (!class_exists('\\Puvox\\library'))
 			$res= (object)( ["ok"=>true, "success"=>false, 'reason'=>"$key was cached", 'content'=> json_encode($array) ] );
 			$ok='false';
 		}
-		//if(is_callable([$this,'notifications_db_entry'])) 
+		if(is_callable([$this,'notifications_db_entry'])) 
 			$this->notifications_db_entry($key, $array['chat_id'], $this->stringify($res), time(), $ok );
 		return $res;
 	}
@@ -4045,6 +3600,15 @@ if (!class_exists('\\Puvox\\library'))
 	
 	public function FilterUrlFromLang($url){	return preg_replace('/(\&|\?)lg\=((.*?)&|(.*))/si','',$url); }
 	
+	
+	public function trailing_slash ($path) {
+		return $this->untrailing_slash($path) . '/';
+	}
+
+	public function untrailing_slash ($path) {
+		return rtrim($path, '/\\' );
+	}
+
 	public function utf8_declarationn() { return '<meta http-equiv="content-type" content="text/html; charset=UTF-8">'; }
 	public function utf8_declarationn_auto() { return '<meta http-equiv="content-type" content="'.get_bloginfo('html_type').'; charset='.get_bloginfo('charset').'">'; }
 
@@ -4714,10 +4278,10 @@ if (!class_exists('\\Puvox\\library'))
 	// ##### SPATIE #####  [ https://github.com/spatie/async/issues/120 ]
     public static function asyncFunctions_helper_spatie($callbacksArray, $exception_handler=null)
     {
-		if ( ! $this->spatieSupported()  ){
+		if ( ! self::spatieSupported()  ){
 			$msg = "Spaties needed extensions are not enabled: pcntl & posix";
 			//if ( !$this->is_localhost()) throw new \Exception($msg); else   
-			$this->var_dump($msg . " ; However, continuing execution in synchronous mode");
+			self::var_dump($msg . " ; However, continuing execution in synchronous mode");
 		}
 		$pool = \Spatie\Async\Pool::create();
 		foreach( $callbacksArray as $callback_arg_pair){
@@ -8021,11 +7585,680 @@ if (!class_exists('\\Puvox\\library'))
 	// ################# END - CUSTOM FUNCTIONS #####################
 	// ##############################################################
 
-
-
-
-
-
-
-  }
 } // class
+
+
+
+
+class tempclass_file {
+
+	public function __construct($parent){
+		$this->parent = $parent;
+	}
+
+	public function temp_dir() {
+		return $this->parent->trailing_slash (sys_get_temp_dir());
+	}
+
+	/*
+	static function _getTempDir()
+    {
+        $tmp_locations = array('/tmp', '/var/tmp', 'c:\WUTemp', 'c:\temp', 'c:\windows\temp', 'c:\winnt\temp');
+        $tmp = ini_get('upload_tmp_dir');
+        if (!strlen($tmp)) {
+            $tmp = getenv('TMPDIR');
+        }
+        while (!strlen($tmp) && count($tmp_locations)) {
+            $tmp_check = array_shift($tmp_locations);
+            if (@is_dir($tmp_check)) {
+                $tmp = $tmp_check;
+            }
+        }
+        return strlen($tmp) ? $tmp : false;
+    }
+	*/
+
+	public function exists ($filePath) {
+		return file_exists($filePath) || is_dir($filePath);
+	}
+
+	public function mtime ($filePath) {
+		if ($this->exists($filePath)) {
+			return filemtime ($filePath)*1000;
+		} else {
+			return null;
+		}
+	}
+
+	public function unlink ($filePath) {
+		return unlink($filePath);
+	}
+
+	//public function mkdir($dest, $permissions=0755, $create=true){ return $this->mkdir_recursive($dest, $permissions, $create); }
+	//public function mkdir_recursive(
+	public function create_directory($dirPath, $permissions=0755, $create=true) {
+		if(!is_dir($dirPath)){
+			//at first, recursively create parent directory if doesn't exist
+			$parent = dirname($dirPath);
+			if( $parent && !is_dir($parent) ){ $this->create_directory($parent, $permissions, $create); }
+			else {
+				if ( is_writable( $parent ) ){
+					return mkdir($dirPath, $permissions, $create); 
+				}
+				else{
+					var_dump("No permission to create directory: $parent");
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	//rmdir rmdir_recursive
+	public function delete_directory ($dirPath) {
+		if(!empty($dirPath) && is_dir($dirPath) ){
+			$dir  = new \RecursiveDirectoryIterator($dirPath, \RecursiveDirectoryIterator::SKIP_DOTS); //upper dirs not included,otherwise DISASTER HAPPENS :)
+			$files = new \RecursiveIteratorIterator($dir, \RecursiveIteratorIterator::CHILD_FIRST);
+			foreach ($files as $path) $path->isDir() && !$path->isLink() ? $this->delete_directory($path->getPathname()) : unlink($path->getPathname()); //{if (is_file($path)) {unlink($path);} else {$empty_dirs[] = $path;} } if (!empty($empty_dirs)) {foreach ($empty_dirs as $eachDir) {rmdir($eachDir);}} 
+			$this->delete_directory($dirPath);
+			return true;
+		}
+		return true;
+		//include_once(ABSPATH.'/wp-admin/includes/class-wp-filesystem-base.php');
+		//\WP_Filesystem_Base::rmdir($fullPath, true);
+	}
+
+	public function read($filePath, $defaultContent = ''){
+		if (!$this->exists($filePath)){
+			return $defaultContent;
+		}
+		return $this->parent->file_get_contents($filePath);
+	}
+
+	public function write($filePath, $content){
+		$dir = dirname($filePath);
+		$this->create_directory($dir);
+		return $this->parent->file_put_contents($filePath, $content);
+	}
+	
+	public function get_files_list_from_dir ($dir) {
+		$filesList = [];
+		// todo
+		return $filesList;
+	}
+
+    /* 
+	public function emptyDir($dirPath){
+		return array_map( 'unlink', array_filter((array) glob("$dirPath/*") ) );
+	}
+	public function copy_recursive($source, $dest, $permissions = 0755){
+		if (is_link($source))	{ return symlink(readlink($source), $dest); }
+		elseif (is_file($source))	{ 
+			if(!file_exists(dirname($dest))){$this->mkdir_recursive(dirname($dest), $permissions, true); }
+			if(!copy($source, $dest)) {echo "not copied ($source ---> $dest )";} return true; 
+		}
+		elseif (is_dir($source))	{ 
+			$this->mkdir_recursive($dest, $permissions, true); 
+			foreach (glob($source.'/*') as $each){	$basen= basename($each);
+				if ($basen != '.' && $basen != '..') { $this->copy_recursive("$each", "$dest/$basen", $permissions);	}
+			}
+		}
+	}
+	*/
+
+}
+
+class tempclass_cache_file {
+
+	public function __construct($parent){
+		$this->parent = $parent;
+	}
+
+	public $customCacheDir = null;
+
+	public function get_dir() {  
+		if (!$this->customCacheDir) { 
+			$this->customCacheDir = $this->parent->file->tempDir();
+		}
+		$finaldir = $this->parent->trailing_slash ($this->customCacheDir . '_cache_' . $this->parent->get_app_name());
+		return $finaldir; 
+	}
+
+	public function set_dir($dir, $auto_clear_seconds=null){ 
+		if($dir) $this->customCacheDir = $dir;
+		$res = $this->parent->file->create_directory($this->customCacheDir);
+		if( !is_null($auto_clear_seconds))
+		{
+			throw new \Exception("Not implemented yet! 345346");
+			//$this->clearCacheDir($auto_clear_seconds); 
+		}
+		return $res;
+	}
+
+	public function file_path($uniqFileName){
+		$uniqFileName = is_string($uniqFileName) || is_numeric($uniqFileName) ? $uniqFileName : json_encode($uniqFileName);
+		$uniqFileName = $this->parent::sanitize_key_dashed($this->parent::chars_from_start($uniqFileName, 15)) . "_" . md5($uniqFileName);
+		$filePath= $this->get_dir() . $uniqFileName . "_tmp";
+		return $filePath;
+	}
+	//
+	public function get($uniqFileName, $defaultContent ='', $expire_seconds=8640000, $decode = true)
+	{
+		$filePath = $this->file_path($uniqFileName);
+		if ( $this->parent->file->exists($filePath) ){
+			if ( $this->parent->file->mtime($filePath) . $expire_seconds * 1000 < time() ){
+				$this->parent->file->unlink($filePath);
+				return $defaultContent;
+			}
+			else{	
+				$cont = $this->parent->file->read($filePath, null);
+				// if specifically array, then on empty, reckon as array
+				if ($cont===null)
+				{
+					return $defaultContent;
+				}
+				if ($decode){
+					try{
+						return json_decode($cont, true);
+					}
+					catch(\Exception $e){
+						return $cont;
+					}
+				}
+				else{
+					return $cont;
+				}
+			}
+		}
+		else {
+			return $defaultContent;
+		}
+	}
+
+	public function set($uniqFileName, $content)
+	{
+		$filePath= $this->file_path($uniqFileName);
+		$contentFinal = is_string($content) ? $content : ((is_array($content) || parent.isObject($content)) ? json_encode($content) : $content);
+		return $this->parent->file->write($filePath, $contentFinal);
+	}
+
+
+	//
+	// public function writeFileAppendJson(filePath, jsonContent, callback){
+	// 	try{
+	// 		var callback = callback || function(){};
+	// 		var self = this;
+	// 		puvox_library.modules('fs').readFile(filePath, 'utf8', function(err,data) {
+	// 			let json = {};
+	// 			if (typeof data !="undefined" && data!=''){
+	// 				json=JSON.parse(data);
+	// 			}
+	// 			let jsonNew = self.jsonConcat(json, jsonContent);
+	// 			let content = JSON.stringify(jsonNew);
+	// 			puvox_library.modules('fs').writeFile(filePath, content, 'utf8', function(callback_) {
+	// 			}); 
+	// 		});
+	// 	}
+	// 	catch(e){
+	// 		console.log("writeFileAppendJson", e); 
+	// 	}
+	// },
+	public $containerDefaultPrefix= "_cached_ids_";
+	public $tempIds =[];
+	public function id_for_content($slugOrContent){
+		return md5($this->parent->is_simple_type($slugOrContent) ? $slugOrContent : json_encode($slugOrContent)); 
+	}
+
+	public function exists_id($containerSlug, $id){
+		return array_key_exists($id, $this->get_ids($containerSlug));
+	}
+
+	public function get_ids($containerSlug) {
+		if (! array_key_exists($containerSlug, $this->tempIds)) {
+			$content = $this->parent->file->read($this->get_dir() . $this->containerDefaultPrefix . $containerSlug, '{}');
+			$this->tempIds[$containerSlug] = json_decode($content, true);
+		}
+		return $this->tempIds[$containerSlug];
+	}
+
+	public function set_ids($containerSlug, $idsDict) {
+		$this->tempIds[$containerSlug] = $idsDict;
+		return $this->parent->file->write($this->get_dir() . $this->containerDefaultPrefix . $containerSlug, json_encode($this->tempIds[$containerSlug]));
+	}
+
+	public function add_id($containerSlug, $id){
+		$ids = $this->get_ids($containerSlug);
+		$ids[$id] = 1;
+		$this->set_ids($containerSlug, $ids);
+	}
+
+	public function add_id_if_not_exists($containerSlug, $id){
+		if (! $this->exists_id($containerSlug, $id)){
+			$this->add_id($containerSlug, $id);
+			return true;
+		}
+		return false;
+	}
+
+	/*
+	#region ################  CACHE ###############
+	public function cache_get($key, $default=null){
+		return call_user_func([$this, "cache_get_{$this->CACHE_CHOSEN_PROGRAM}"], $key, $default);
+	}
+	public function cache_set($key, $data, $seconds = 8640000){
+		return call_user_func([$this, "cache_set_{$this->CACHE_CHOSEN_PROGRAM}"], $key, $data, $seconds);
+	}
+	public function cache_append($key, $data, $seconds = 8640000){
+		$existing_arr = call_user_func([$this, "cache_get_{$this->CACHE_CHOSEN_PROGRAM}"], $key, []);
+		$new  = $this->is_array($existing_arr) ? $this->array_merge($existing_arr,$data) : $existing_arr. $data;
+		$final_value  = ($this->is_simple_type($new) ? $new : serialize($new));
+		return call_user_func([$this, "cache_set_{$this->CACHE_CHOSEN_PROGRAM}"], $key, $final_value, $seconds);
+	}
+
+
+
+
+
+
+
+			
+			#region ### phpRedis (better than "pRedis" ) [edit: 02mxypZ1 ] ###
+			public $redis_host_params = [
+				'host' => '127.0.0.1',
+				'port' => 6379,
+				'connectTimeout' => 2.5,
+				'db_index' => 0,
+				'auth' => ['', ''],
+				'ssl' => ['verify_peer' => false],
+			];
+			public $redis_keys_prefix='';
+			public $redis_instance = null; 
+			public $redis_default_key_pre = ':';
+			public function cache_get_redis($key, $default=null){
+				$this->helper_cache_redis_init_check($this->redis_host_params, true);
+				$key = $this->redis_keys_prefix . $key; 
+				$redis = $this->helper_redis_getInstance();
+				$val = $redis->get($key);
+				$this->helper_redis_IfSwooleCloseNeeded($redis);
+				if (!$val)
+					return $default;
+				return (self::is_serialized($val) ? unserialize($val) : $val);
+			}
+			public function cache_set_redis($key, $data, $seconds = 8640000){
+				$this->helper_cache_redis_init_check($this->redis_host_params, true);
+				$key = $this->redis_keys_prefix . $key;
+				$redis =$this->helper_redis_getInstance();
+				$result = $redis->set($key, ($this->is_simple_type($data) ? $data : serialize($data)), $seconds );
+				$this->helper_redis_IfSwooleCloseNeeded($redis);
+				return $result;
+			} 
+			// public function cache_append_redis($key, $data, $seconds = 8640000){
+			// 	$this->helper_cache_redis_init($this->redis_host);
+			// 	$existing_arr = $this->cache_get_redis($key,[]);
+			// 	$new  = $this->is_array($existing_arr) ? $this->array_merge($existing_arr,$data) : $existing_arr. $data;
+			// 	$final_value  = ($this->is_simple_type($new) ? $new : serialize($new));
+			// 	return $this->cache_set_redis($key, $final_value, $seconds);
+			// }
+			public function cache_clear_redis(){
+				$this->helper_cache_redis_init_check($this->redis_host_params, true);
+				$this->helper_redis_getInstance()->flushAll();
+			}
+			// helpers, with added swoole support
+			private $redis_pool=null;   private $redis_start_inited=false;
+			public function helper_cache_redis_init($host_params, $use_params=false){
+				try{ 
+					if (self::swoole_inside_coroutine()){
+						if ( is_null($this->redis_pool) ){
+							$authString = !empty($host_params['auth'][0]) ? $host_params['auth'][0].':'.$host_params['auth'][1] : '';
+							$newR = (new \Swoole\Database\RedisConfig)->withHost($host_params['host'])->withPort($host_params['port'])->withAuth($authString)->withDbIndex($host_params['db_index'])->withTimeout($host_params['connectTimeout']);
+							$this->redis_pool = new \Swoole\Database\RedisPool( $newR );
+							$this->redis_instance= $this->helper_redis_getInstance(); 
+						}
+					}
+					else {
+						if ( is_null($this->redis_instance) ){
+							$this->redis_instance= new \Redis(); 
+							$this->redis_instance->connect( $host_params['host'], $host_params['port']); 
+							if ($use_params)
+							{
+								// SERIALIZER_NONE | SERIALIZER_PHP | SERIALIZER_IGBINARY | SERIALIZER_MSGPACK );
+								$this->redis_instance->setOption(\Redis::OPT_SERIALIZER, \Redis::SERIALIZER_PHP);
+								$this->redis_instance->setOption(\Redis::OPT_PREFIX, __NAMESPACE__. $this->redis_default_key_pre);	// use custom prefix on all keys
+							}
+						} 
+					}
+					if ($use_params)
+						$this->redis_keys_prefix = $this->slug .'_';
+				}
+				catch(\Exception $ex){
+					if (get_class($ex)==="RedisException"){
+						if (!$this->redis_start_inited){
+							$this->redis_start_inited=true;
+							if(method_exists($this,'helper_redis_try_os_start')) $this->helper_redis_try_os_start();
+							sleep(1);
+							$this->helper_cache_redis_init($host_params);
+						}
+					}
+				}
+			} 
+			public function helper_cache_redis_init_check($host_params, $use_params=false){
+				if(is_null($this->redis_instance))
+					$this->helper_cache_redis_init($host_params, $use_params);
+			}
+
+			public function helper_redis_getInstance()
+			{
+				return (self::swoole_inside_coroutine() ? $this->redis_pool->get() : $this->redis_instance);
+			} 
+			public function helper_redis_getAllKeys($redis_instance)
+			{
+				$keys=[];
+				$it = NULL;
+				do {
+					$arr_keys = $redis_instance->scan($it);
+					if ($arr_keys !== FALSE) {
+						foreach($arr_keys as $str_key) {
+							$keys[]= $str_key;
+						}
+					}
+				} while ($it > 0);
+				return $keys;
+			} 
+					
+			public function helper_redis_IfSwooleCloseNeeded($redis_instance)
+			{
+				if ( self::swoole_inside_coroutine() ){
+					$this->redis_pool->put($redis_instance);
+				}
+			}
+			#endregion 
+
+	// ##### memcached: todo #####
+	//
+	//
+	//
+	//
+	//
+	//
+
+	// ##### apcu: todo ##### (examples: https://pastebin_com/0Q5y28fA)
+	//
+	//
+	//
+	//
+	//
+	//
+
+
+	// ####################### OBJECTS ####################### //
+	// https://medium.com/@dylanwenzlau/500x-faster-caching-than-redis-memcache-apc-in-php-hhvm-dcd26e8447ad
+	// sample ---> https://pastebin_com/0eUvyXaD
+
+	public $cache_object_method='serialize'; //serialize | memcached | apcu
+	public function cache_get_object($uniqFileName, $default='', $expire_seconds=86400 )
+	{
+		if ($this->cache_object_method=='apcu')
+		{
+		}
+		else{
+			$data = $this->cache_get_file($uniqFileName, $default, $expire_seconds, $decode=false);
+			return unserialize( $data );
+		}
+	}
+	public function cache_set_object($uniqFileName, $content, $throw_exception=true)
+	{
+		$res=false;
+		if ($this->cache_object_method=='apcu')
+		{
+			
+		}
+		else{
+			$res = $this->cache_set_file($uniqFileName, serialize($content), false);
+		}
+		if(!$res && $throw_exception){
+			throw new \Exception('Was unable to set APCU cache for '.$uniqFileName);
+		}
+		return $res;
+	}
+
+
+
+	// ### CACHE DIRS ### 
+	private $cacheDirectory = __DIR__.'/_cache/';  //sys_get_temp_dir()
+	public function cache_dir_set($dir=null, $auto_clear_seconds=null){ 
+		if($dir)  $this->cacheDirectory = $dir;
+		$res = $this->mkdir($this->cacheDirectory);
+		if( !is_null($auto_clear_seconds))
+		{
+			$this->clearCacheDir($auto_clear_seconds); 
+		}
+		return $res;
+	}
+	public function cache_dir_get($create=true){ 
+		$dir = $this->cacheDirectory;
+		if($create && !is_dir($dir)){ $this->mkdir($dir); }
+		return $dir; 
+	}	 
+
+	// ### CACHE FILES ###
+	public function cache_file_location($uniqFileName){
+		$uniqFileName = is_string($uniqFileName) || is_numeric($uniqFileName) ? $uniqFileName : json_encode($uniqFileName);
+		$uniqFileName = self::sanitize( substr($uniqFileName, 0, 10)) . "_" . md5($uniqFileName);
+		$filePath= $this->cache_dir_get() . $uniqFileName ."_tmp"; //"/". 
+		return $this->realpath($filePath);
+	}
+	public function cache_get_file($uniqFileName, $default='', $expire_seconds=8640000)
+	{
+		$filePath= $this->cache_file_location($uniqFileName);
+		if ( strlen($filePath) < 3) return "too tiny filename";
+
+		if ( file_exists($filePath) ){
+			if (filemtime($filePath)+$expire_seconds<time() ){
+				unlink($filePath);
+				return $default;
+			}
+			else{	
+				return $this->file_get_contents($filePath);
+			}
+		}
+		else {
+			return $default;
+		}
+	}
+	public function cache_set_file($uniqFileName, $content, $encode=true)
+	{
+		$filePath= $this->cache_file_location($uniqFileName);
+		$contentFinal = ($encode && (is_array($content) || is_object($content)) ) ? json_encode($content): $content;
+		return $this->localdata_set($filePath, $contentFinal);
+	}
+	
+	public function cache_append_array_file($uniqKeyFileName, $data)
+	{    
+		$existing  = $this->cache_get_file($uniqKeyFileName,[]);
+		$newData   = is_array($data) ? $data : [$data];
+		$finalData = array_merge_recursive($existing,$newData);
+		return $this->cache_set_file($uniqKeyFileName, $finalData);
+	}
+
+	public function cacheDirUrl(){ return basename($this->cache_dir_get()); }
+	public function backupFileIntoCache($filename, $data){
+		$filename = $this->cache_dir_get() .'/'. $filename . date('Y-m-d H-i-s') . "_".md5($data);
+		$this->localdata_set($filename, is_array($data) ? json_encode($data) : $data );
+	}
+
+	// ####################### IDs ####################### //
+	public $cached_IDS_type = 'file'; // file, wp, db, object (using redis or whatever, according to $CACHE_CHOSEN_PROGRAM) //$this->isWP;
+	public function cache_key_create($text){return md5( is_array($text) ? json_encode($text) : $text );	}
+ 
+	// ########
+	private function cache_ids_parentname($containerHint){ return "_px_cached_ids_".$containerHint;} 
+	private function get_cached_ids_array($containerHint){
+		$ContainerName = $this->cache_ids_parentname($containerHint);
+		if ($this->cached_IDS_type=='file'){
+			$filePath =$this->cache_dir_get() . $ContainerName;
+			if ( empty($this->temp_cacheIdsArray) || empty($this->temp_cacheIdsArray[$filePath]) ) {
+				$cont = $this->file_get_contents( $filePath );
+				if ( empty($cont) ) {
+					$this->temp_cacheIdsArray[$filePath] = [];
+				}
+				else {
+					$this->temp_cacheIdsArray[$filePath] = json_decode($cont,true);
+					//if error happened
+					if (is_null($this->temp_cacheIdsArray[$filePath])){
+						//if contains broken array due to rare overwrite problem, i.e. ["id_1"],"id2","id3"]
+						if ($this->contains($cont, $delimiter = '"')){
+							$arrs=$this->string_to_array($cont, $delimiter);
+							$this->temp_cacheIdsArray[$filePath]=$arrs;
+						}
+					}
+				}
+			}
+			$existing_ids = $this->temp_cacheIdsArray[$filePath];
+		}
+		elseif ($this->cached_IDS_type=='wp'){
+			$existing_ids = get_option( $ContainerName, [] );
+		}
+		elseif ($this->cached_IDS_type=='object'){
+			$existing_ids = $this->cache_get( $ContainerName, [] );
+		}
+		return $existing_ids;
+	}
+	private function set_cached_ids_array($containerHint, $existing_ids){
+		$ContainerName = $this->cache_ids_parentname($containerHint);
+		if ($this->cached_IDS_type=='file'){
+			$filePath = $this->cache_dir_get() . $ContainerName;
+			$this->temp_cacheIdsArray[$filePath] = $existing_ids;
+			$this->localdata_set( $filePath, json_encode($existing_ids) );
+		}
+		elseif ($this->cached_IDS_type=='wp'){
+			update_option( $ContainerName, $existing_ids );
+		}
+		elseif ($this->cached_IDS_type=='redis'){
+			$this->cache_set( $ContainerName, $existing_ids);
+		}
+	}
+
+	private function add_cached_id($containerHint, $cache_id){
+		$ContainerName = $this->cache_ids_parentname($containerHint);
+		//to ensure to preserve any overwrites happened within last few milliseconds
+		$latest_current_ids = $this->get_cached_ids_array($containerHint); //
+		//$recently_added_ids = array_diff($latest_current_ids, $added_ids);
+		//$up_to_date_IDS = array_merge($existing_ids, $recently_added_ids); 
+		$latest_current_ids[]=$cache_id;
+		$this->set_cached_ids_array($containerHint, $latest_current_ids);
+	}
+
+	public function is_cached_id($cache_parent_key, $item_key_or_params){  
+		$key = is_array($item_key_or_params) ? json_encode($item_key_or_params) : $item_key_or_params;
+		$key = strlen($key) <=35 ? $key : md5($key); //if same length as md5, then prefer original readable key
+		if( in_array($key, $this->get_cached_ids_array($cache_parent_key) ) )
+		{
+			return true;
+		}
+		else{
+			$this->add_cached_id($cache_parent_key, $key);
+			return false;
+		}
+	}
+	public function clearCacheIdsOnCall($param_name){ 
+		if (isset($_GET[$param_name]))
+		{
+			$this->clearCacheIds('todo');
+		}
+	}
+	public function clearCacheIds($key_name){ 
+		$key_fullname = $this->cache_ids_parentname($key_name);
+		if ($this->cached_IDS_type=='local'){
+			$this->rmdir($this->cache_dir_get());
+			$this->mkdir($this->cache_dir_get());
+		}
+		elseif ($this->cached_IDS_type=='wp'){
+			update_option( $this->cache_ids_parentname($key_name), []);
+		}
+		elseif ($this->cached_IDS_type=='object'){
+			$this->cache_set( $key_fullname, []);
+		}
+		else {
+		}
+	}
+	public function clearCacheDir($seconds=86400){
+		$timerFile= $this->cache_dir_get().'/_cleanTime.blobz';
+		if (file_exists($timerFile) && filemtime($timerFile)<time()-$seconds){
+			array_map( 'unlink', array_filter((array) glob( $this->cache_dir_get()."*") ) );
+			$this->localdata_set($timerFile, time());
+		}
+		else{
+			$this->localdata_set($timerFile, time());
+		}
+	} 
+	
+	public function cacheDirLink(){
+		return $this->baseURL .'/'. $this->cacheDirUrl() .'/';
+	}
+
+
+	// usage:  cachedFunction( [$xyzClass,'methodName'], $params, $cache_seconds=60*60*24, "mySitePeopleAges" )
+	public function cachedFunctionCall($callbackFunction, $params=[], $seconds=86400, $UniqCacheName='', $force_on_empty=true){
+		$fileName = $this->funcStringName($callbackFunction, $params, $seconds, $UniqCacheName);
+		$cache_file = $this->cache_dir_get() .'_'. $fileName ;
+		$call = false;
+		//if ( $this->isWpCache() )
+		//{
+		//}
+		
+		if ( $seconds<=0 || $this->forceNewCache || !file_exists($cache_file) || time() - filemtime($cache_file) > $seconds )  
+		{
+			$call=true;
+		}
+		else{
+			$cont = $this->file_get_contents($cache_file);
+			if ($cont=="" && $force_on_empty){
+				$call=true;
+			}
+			else{
+				$response = $cont;
+			}
+		}
+		//
+		if($call){
+			$response = call_user_func_array($callbackFunction, $params);
+			$this->localdata_set($cache_file, is_array($response) || is_object($response) ? json_encode($response) : $response );
+		}
+
+		try{
+			return is_array($response) || is_object($response) || ! is_string($response) ? $response : json_decode($response);
+		}
+		catch(\Exception $e)
+		{
+			return $response;
+		}
+	}
+	
+	public function funcStringName($callbackFunction, $params, $seconds, $fixedName='')
+	{ 
+		if (!empty($fixedName))  
+			return $fixedName; 
+		$funcSlug = is_array($callbackFunction) && is_object($callbackFunction[0]) ? get_class($callbackFunction[0])."_".$callbackFunction[1] : (is_string($callbackFunction) ? $callbackFunction : md5(json_encode($callbackFunction)));
+		$funcAliasString= md5( basename( $funcSlug ."_". md5(json_encode($params)) . "_". $seconds ) );
+		return $funcAliasString; 
+	}
+
+	public function transientFunction($callbackFunction, $params=[], $seconds=86400, $transientName=''){
+		$transientName = $this->funcStringName($callbackFunction, $params, $seconds, $transientName) ;
+		if( ($value = get_transient($transientName))===false ) { 
+			$value = call_user_func_array($callbackFunction, $params);
+			set_transient($transientName, $value, $seconds);
+		}
+		return $value;
+	}
+	*/
+	
+
+}
+
+
+
+
+
+
+}// if-clause
