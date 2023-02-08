@@ -2432,8 +2432,8 @@ class library
 	}
 
 
-	// TODO - handle $_POST
 	public function disable_header_cache($hard=false, $file=false){
+		// TODO - handle _POST
 		header("Expires: Mon, 4 Jan 1999 12:00:00 GMT");        // Expired already 
 		header("Last-Modified: ".gmdate("D, d M Y H:i:s")." GMT");     
 		header("Cache-Control: no-cache, must-revalidate");      // good for HTTP/1.1 
@@ -2506,7 +2506,7 @@ class library
 		'twitter'	=>'https://twitter.com/share?url='
 	];
 
-	public function validate_mail( $mail ){  //$_POST['email']
+	public function validate_mail( $mail ){  
 		return !filter_var( $mail, FILTER_VALIDATE_EMAIL );
 	}
 
@@ -2514,7 +2514,7 @@ class library
 	public function password_site($password, $hint="Type password")
 	{
 		$rnd_ext = 'pss_'.str_replace('.','_', $this->domain);
-		if ( isset($_POST['passwk']) && $password == $_POST['passwk'] ) { setcookie($rnd_ext, $password,  time()+1111111,  $this->homeFOLD); header("location:".$_SERVER['REQUEST_URI']);exit; } 
+		if ( $password == $this->Post('passwk') ) { setcookie($rnd_ext, $password,  time()+1111111,  $this->homeFOLD); header("location:".$_SERVER['REQUEST_URI']);exit; } 
 		elseif (!isset($_COOKIE[$rnd_ext]) || $_COOKIE[$rnd_ext]!=$password ){ echo '<div style="display:flex; justify-content:center;"><form action="" method="post">  <b>'.$hint.'</b>:<input name="passwk" value="">  <input type="submit" value="Enter"></form></dvi>';exit;}
 	}	
 
@@ -4652,7 +4652,7 @@ class library
 			parse_str($argv[1], $array);
 		}
 		else {
-			$array=$_GET;
+			$array=$this->Get();
 		}
 		return !empty($key) ? $this->array_value($array,$key,$default) : $array;
 	}
@@ -4673,7 +4673,7 @@ class library
 			parse_str($argv[1], $array);
 		}
 		else {
-			$array=$_GET;
+			$array=$this->Get();
 		}
 		return array_key_exists($key,$array);
 	}
@@ -4701,7 +4701,7 @@ class library
 		return $str;
 	}
 
-	//convert command line to $_GET
+	//convert command line to array like _GET
 	public function argv_to_array($argv_=null,$index=1)
 	{
 		$array=[];
@@ -4922,6 +4922,614 @@ class library
 		return false;
 	}
  
+	
+	public function setLogDir($dir)
+	{
+		$this->logDir = $dir;
+		$this->mkdir($this->logDir);
+	}
+	
+	
+	
+	
+	public function formFromArray($value, $fullKeyName='', $replace_spaces=false, $url='')
+	{
+		?>
+		<form action="<?php echo $url;?>" method="POST">
+		<?php $this->input_fields_from_array_RECURSIVE2($value, $fullKeyName, $replace_spaces); ?>
+		<input type="submit"></form>
+		<?php 
+	}
+
+
+
+
+
+	public $arFieldRecRastKey="";
+	public $arFieldAutoresize=true;
+	public function input_fields_from_array_RECURSIVE2($value, $fullKeyName='', $replace_spaces=false, $cycle=0){
+		$current_key = preg_replace('/(.*)\[(.*?)\]/','$2', $fullKeyName);  //i.e. cc from: aa[bb][cc]
+		$addButtonKeyName = "_ADD_BUTTON_";
+
+		if ($cycle==0)
+		{
+			if ($this->arFieldAutoresize)
+				$this->js_autosize_textarea('.valueTxtArea');
+			?>
+			<style>
+			@media screen and (min-width: 1200px) { 
+				#container-rebox { width: 700px; }
+			}
+			.ArrayFieldsContainer{box-shadow:0px 0px 5px black; font-size:0.8em; } 
+
+			.ArrayFieldsContainer .keyBlock{transition:0.1s all; padding:1px 0px 0px 3px; zmargin:2px 0px 0px 10px; height: 100%; } 
+			.ArrayFieldsContainer > .keyBlock { height: auto; first_block_needs_autoheigh:okk; }
+			.ArrayFieldsContainer .keyBlock:hover{box-shadow:0 0 0 1px black; border:2px black;} 
+			.ArrayFieldsContainer .new_block{ position:relative; border:1px black dashed; margin: 4px; transition:1s all; opacity:1; } 
+			.ArrayFieldsContainer .removing{ height:0px!important; opacity:0!important; } 
+			
+			.ArrayFieldsContainer .each_arr, .ArrayFieldsContainer .each_ln { display:flex; padding:2px 2px 0 5px; zmargin:2px 2px 0 5px; flex-direction:column; } 
+
+			.ArrayFieldsContainer .valueTxtArea{ margin:0 0 0 5px; float:right;     padding: 0px; }  
+
+			.ArrayFieldsContainer .emptyTxtarea[style*="height:2"],.ArrayFieldsContainer .emptyTxtarea[style*="height:3"]{ background:#ff7e7e; _after_change_that_height_changes:"";} 
+			.ArrayFieldsContainer .parentKey{ opacity:0.6; font-size:0.7em; } 
+			.ArrayFieldsContainer .keyname{ min-width: 10px; } 
+			.ArrayFieldsContainer .plus_minus_sign{ font-weight:bold; font-size:1em; } 
+			.ArrayFieldsContainer .plus_minus_sign.sign_minus{ color:red; } 
+			.ArrayFieldsContainer .plus_minus_sign.sign_plus{ color:green; font-size:2em; } 
+			.ArrayFieldsContainer .addhrefBLock { display:block; text-align:center; } 
+ 
+			.ArrayFieldsContainer .ancestor_array .keyBlock { display:flex; flex-direction:row; padding:10px 10px 0 10px;} 
+			.ArrayFieldsContainer .ancestor_array .each_ln {display:flex; flex-direction: column;} 
+			.ArrayFieldsContainer textarea { overflow-y: scroll;} 
+			</style>
+			<script>	
+			var parentPredix= "parent_of_";
+			function addNewBlock(evt)
+			{
+				evt.preventDefault();
+				let targ=evt.target; 
+				let parent=targ.parentNode.parentNode;
+				let samplEl= $(parent).find('[class*="'+parentPredix+'"]').first().clone(); 
+				let newKey= prompt("Input new key name");
+				if (typeof PuvoxAddNewBlock_Filter_Func6273 === "function")
+					newKey = PuvoxAddNewBlock_Filter_Func6273(newKey);
+				if(!newKey) return;
+
+				let oldKey= samplEl.data("key"); 
+				samplEl.data("key", newKey);
+				samplEl.find("textarea").text("");
+				
+				let parentkey= samplEl.data("parent"); 
+				let newFullKey=parentkey +"["+newKey+"]"; 
+				let newCont = samplEl.html().replace( new RegExp("(\\[|\>)"+oldKey+"\\b", "g"), '$1'+newKey );
+				samplEl.html(newCont); 
+				$(targ).closest(".new_block").find(".children_cont").first().append(samplEl);
+				//targ.insertAdjacentHTML("beforebegin", newCont);
+			}
+			function removeCurrentBlock(evt, keynm)
+			{
+				evt.preventDefault();
+				if (confirm("U sure to delete this block?"))
+				{
+					let targ	= evt.target; 
+					let parent  = $(targ).closest(".new_block");
+					parent.css("height", parent[0].offsetHeight +"px");
+					window.setTimeout( function(){ parent.addClass("removing"); }, 10 );
+					window.setTimeout( function(){ parent.remove(); }, 1000 );
+				}
+			}
+			</script>
+			<?php
+			
+			//initial
+			echo '<div class="ArrayFieldsContainer">'; 
+		}
+
+		$keyName_BOLDED = preg_replace('/(.*)\[(.*?)\]/','<span class="parentKey">$1</span>[<b>$2</b>]', $fullKeyName);
+		$is_parent_array = !is_array($value) || !array_key_exists('languages', $value) ;
+
+		echo '<div class="keyBlock keyname_'.$fullKeyName.' '.($is_parent_array ? "regular_array" : "ancestor_array").'" style="background:'.$this->random_color('30').'; ">';
+		$style = ' style=""';
+
+		if ( !is_array($value) ){
+			echo '
+			<div class="each_ln" '.$style.'>
+				<div class="keyname">'. $keyName_BOLDED .'</div>
+				<div class="txtar"><textarea class="valueTxtArea '. ( trim($value) =='' ? 'emptyTxtarea' :'') .' key_'.$current_key.'"  name="'.$fullKeyName.'" placeholder="">'. trim($value) .'</textarea></div>
+			</div>';
+		}
+		else{
+			echo  '
+			<div class="each_arr" '.$style.'> 
+				<div class="keyname">'. $keyName_BOLDED .'</div>
+				<div class="children_cont">';
+			$addButtonOnKey=false;
+			foreach ($value as $keyname1=>$value1){
+				if ($keyname1==$addButtonKeyName) {
+					continue;
+				}
+				$newKeyNm = $fullKeyName.'['.$keyname1.']';
+				echo '<div class="new_block parent_of_" data-parent="'.$newKeyNm.'" data-key="'.$keyname1.'">';
+
+				// if array contains empty_placeholder, then it was meant for Adding/Removing for keys
+				if (array_key_exists($addButtonKeyName, $value))
+				{
+					$addButtonOnKey=true;
+					echo '<a href="#" onclick="removeCurrentBlock(event,\''.$newKeyNm.'\')"><span class="plus_minus_sign sign_minus">-delete</span></a>';
+				}
+				
+				$this->arFieldRecRastKey=$keyname1;
+				$this->input_fields_from_array_RECURSIVE2($value1, $newKeyNm,  $replace_spaces, $cycle+1);
+				echo '</div>';
+			}
+			echo '</div>';
+
+			if ($addButtonOnKey)
+			{
+				echo '<a class="addhrefBLock" href="#" onclick="addNewBlock(event)"><span class="plus_minus_sign sign_plus">+ADD</span></a>';
+			}
+			echo '
+			</div>';	
+		}
+		echo '</div>';		
+		if ($cycle==0)
+		{
+			echo '</div>'; 
+		}
+	}
+	 
+
+	
+	
+	
+	
+	public function move_folder_contents($from, $to)
+	{
+		foreach( glob($from ."/*") as $each)
+		{
+			$target=$to."/".basename($each);
+			if(is_dir($target)) {
+				//$this->rmdir_recursive($target);
+			}
+			elseif(is_file($target)) 
+			{
+				@unlink($target);
+				//rename($each, $target);
+			}
+		}
+	}
+		
+		
+		
+		
+	public function js_debugmode($name='debugmode')
+	{
+		if ( ! defined('PUVOX_js_debugmode') )
+		{
+			define('PUVOX_js_debugmode', true);
+			$this->debugmode_script = '<script>debug_mode_ ="true";</script>';
+			add_action('wp_head',	function(){ echo $this->debugmode_script; }, 1); 
+			add_action('admin_head',function(){ echo $this->debugmode_script; }, 1);
+		}
+	}
+	
+	
+	
+	
+	
+
+	// REGEXES
+	public function preg_replace_if_inside($str, $phrase, $start, $end)
+	{ 
+		return preg_replace("/(?<=". preg_quote($start).")(.*?|)". $phrase ."(.*?|)(?=".preg_quote($end).")/si", '', $str);
+	}
+		
+	public function splitBy_X_NotInside_YZ($str, $by, $y, $z) //y&z: not inside
+	{ 
+		return preg_split( '/'.$by.'+(?=(?:(?:[^'.$y.']*"){2})*[^'.$z.']*$)/si', $str );
+	}
+	public function splitBy_X_NotInside($content, $by, $array, $ignore_whitespaces=true) //y&z: not inside
+	{ 
+		$lettersArray	= str_split($content);
+		$result	=[];
+		//
+		$lastChar_       ='';
+		$escapeChar_     ='\\';
+		$currentStr      ='';
+		$currentStr_last ='';
+		$is_Active = [];
+		$quoteDoubleId = urlencode( base64_encode( implode("_", ['"','"'] ) ) );
+		$quoteSingleId = urlencode( base64_encode( implode("_", ["'","'"] ) ) );
+		foreach($array as $eachPair)
+		{
+			$eachPairString = urlencode(base64_encode(implode("_",$eachPair)));
+			$is_Active[$eachPairString] = false;
+		}
+		
+		$active_count = 0;
+		foreach($lettersArray as $char_)
+		{
+			$currentStr 		.= $char_;
+			//
+			//if last char was escape, we can ignore current one
+			if ($lastChar_ != $escapeChar_)
+			{ 
+				foreach($array as $eachPair)
+				{
+					$eachPairString = urlencode( base64_encode( implode("_",$eachPair) ) );
+					//skip quote inside quotes:
+					if ($char_ == '"' && $is_Active[$quoteSingleId] )
+						continue;
+					if ($char_ == "'" && $is_Active[$quoteDoubleId] )
+						continue;
+				
+					$char_START		= $eachPair[0];
+					$char_END		= $eachPair[1];
+					$sameChars		= $char_START==$char_END;
+					// we need different cases:
+					if ($sameChars)
+					{
+						if ($char_ == $char_START)
+						{
+							if ( $is_Active[$eachPairString] )
+								{  $is_Active[$eachPairString]=false; $active_count--; }
+							else 					
+								{  $is_Active[$eachPairString]=true; $active_count++; }
+						}							
+					}
+					else{
+						if ( $char_ == $char_START && !$is_Active[$eachPairString])
+						{
+							$is_Active[$eachPairString] = true;
+							$active_count++;
+						}
+						else if ( $char_ == $char_END  && $is_Active[$eachPairString] )
+						{
+							$is_Active[$eachPairString] = false;
+							$active_count--;
+						}
+					}
+				}
+			}
+			//
+			if ( $active_count==0 )
+			{
+				$currLength = strlen($currentStr);
+				if (  $this->endsWith($currentStr, $by) )
+				{
+					if ( $ignore_whitespaces && empty(trim($currentStr_last)) ){
+						//don't add
+					}
+					else{
+						$result[] = trim($currentStr_last);
+					}
+					$currentStr = '';
+				}
+			}
+			$currentStr_last	= $currentStr;
+			$lastChar_			= $char_;
+		} 
+		if (!empty(trim($currentStr))) {
+			$result[] = trim($currentStr);
+		}
+		return $result;
+	}
+	public function replaceIfNotInside($content, $what, $with, $array, $ignore_whitespaces=true) //y&z: not inside
+	{ 
+		$lettersArray	= str_split($content);
+		//
+		$lastChar_       ='';
+		$escapeChar_     ='\\';
+		$currentStr      ='';
+		$currentStr_last ='';
+		$is_Active = [];
+		$quoteDoubleId = urlencode( base64_encode( implode("_", ['"','"'] ) ) );
+		$quoteSingleId = urlencode( base64_encode( implode("_", ["'","'"] ) ) );
+		foreach($array as $eachPair)
+		{
+			$eachPairString = urlencode(base64_encode(implode("_",$eachPair)));
+			$is_Active[$eachPairString] = false;
+		}
+		
+		$active_count = 0;
+		foreach($lettersArray as $char_)
+		{
+			$currentStr 		.= $char_;
+			//if last char was escape, we can ignore current one
+			if ($lastChar_ != $escapeChar_)
+			{
+				foreach($array as $eachPair)
+				{
+					$eachPairString = urlencode( base64_encode( implode("_",$eachPair) ) );
+					//skip quote inside quotes:
+					if ($char_ == '"' && $is_Active[$quoteSingleId] )
+						continue;
+					if ($char_ == "'" && $is_Active[$quoteDoubleId] )
+						continue;
+				
+					$char_START		= $eachPair[0];
+					$char_END		= $eachPair[1];
+					$sameChars		= $char_START==$char_END;
+					// we need different cases:
+					if ($sameChars)
+					{
+						if ($char_ == $char_START)
+						{
+							if ( $is_Active[$eachPairString] )
+								{  $is_Active[$eachPairString]=false; $active_count--; }
+							else 					
+								{  $is_Active[$eachPairString]=true; $active_count++; }
+						}							
+					}
+					else{
+						if ( $char_ == $char_START && !$is_Active[$eachPairString])
+						{
+							$is_Active[$eachPairString] = true;
+							$active_count++;
+						}
+						else if ( $char_ == $char_END  && $is_Active[$eachPairString] )
+						{
+							$is_Active[$eachPairString] = false;
+							$active_count--;
+						}
+					}
+				}
+			}
+			//
+			if ( $active_count==0 )
+			{
+				$currLength = strlen($currentStr);
+				if (  $this->endsWith($currentStr, $what) )
+				{
+					if ( $ignore_whitespaces && empty(trim($currentStr_last)) ){
+						//don't add
+					}
+					else{
+						$currentStr = substr($currentStr, 0, -(strlen($what)) ) . $with;
+					} 
+				}
+			}
+			$currentStr_last	= $currentStr;
+			$lastChar_			= $char_;
+		}
+		return $currentStr;
+	}
+	
+	public function getFromX_tillY_NotInside($content, $from, $till, $array, $regex_index=0, $remove_outside=true) 
+	{
+		$from_ = $from; //this.escapeRegExp(from);
+		preg_match( '/'. $from_ ."(.*)/si", $content, $matches );
+		$result = "";
+		if ($matches != null )
+		{
+			$regex_index_final = $regex_index+1;
+			$foundPart= $matches[$regex_index_final];
+			$splits = $this->splitBy_X_NotInside($foundPart, $till, $array);
+			$result = trim($splits[0]);
+		}
+		return $result;
+	}
+	// ############### REGEXES ###############
+	
+	 
+	
+	public function get_current_buffer_clean($func_name=false){  ob_start(); if ($func_name) {$args=func_get_args(); call_user_func_array($func_name, $args);}  $cont= ob_get_clean(); ob_flush(); return $cont; }
+	
+	// youtube old funcs - get_video_info: pastebin_com/HWeaHFVJ
+
+	// php memory ram shared caching: pastebin_com/CpkkA43x
+	
+
+	
+	
+	
+	// ### ERRORS TABLE ### //
+	public function sqlite_error_db_init($db_dir=false, $db_name=false, $PLA=[], $TELEGRAM=[])
+	{
+		$sqlite_db_path= $db_dir . $db_name;
+		$db = $this->sqlite_db_init( $sqlite_db_path );
+		$this->SQLITE_ERRORS_DB_INSTANCE = $db;
+	}
+	public function sqlite_error_table_create($db, $tablename)
+	{
+		$db->exec( "CREATE TABLE IF NOT EXISTS {$tablename} (
+			id INTEGER PRIMARY KEY, 
+			title TEXT, 
+			text TEXT, 
+			status TEXT,
+			url TEXT, 
+			time INTEGER)"
+		);
+	}
+	public function sqlite_error_log($db, $tablename, $title, $text, $status=null)
+	{
+		$db = $db ?: $this->SQLITE_ERRORS_DB_INSTANCE;
+		$this->sqlite_error_table_create($db, $tablename);
+        $sql = 'INSERT INTO '.$tablename.'(title,text,status,url,time) VALUES( "'.($title ?: '').'", "'.($text ?: '').'", "'.($status ?: '').'", "'.$this->requestURL.'" , "'. time().'")';
+        //if ( ! $this->helpers->is_localhost ) $this->helpers->telegramMsg( $this->tg_errorbot['key'], $this->tg_errorbot['chat'], $title .'::::'. $text);
+		return $db->exec($sql);
+    }
+	public function slog($title, $text, $db=null, $tablename='all_errors')
+	{
+		return $this->sqlite_error_log($db, $tablename, $title, $text);
+    }
+	
+
+
+
+	// ##################### //
+ 
+
+
+	
+	#region PHP to PHP/C# encryption/description :
+	// https://puvox.software/blog/two-way-encryption-decryption-between-php-and-c-sharp/
+	//public static class EncryptDecrypt {
+		public static function encrypt($plaintext, $password, $method= 'aes-256-cbc'){
+			self::helper__encrypt_decrypt_stream($password);
+			return base64_encode(openssl_encrypt($plaintext, $method, self::password_shuffled, OPENSSL_RAW_DATA, self::iv));
+		}
+
+		public static function decrypt($encrypted, $password, $method= 'aes-256-cbc'){
+			self::helper__encrypt_decrypt_stream($password);
+			return openssl_decrypt(base64_decode($encrypted), $method, self::password_shuffled, OPENSSL_RAW_DATA, self::iv);
+		}
+		
+		public static function helper__encrypt_decrypt_stream($password, $method= 'aes-256-cbc'){
+			// Must be exact 32 chars (256 bit)
+			self::$password_shuffled = substr(hash('sha256', $password, true), 0, 32);		
+			// IV must be exact 16 chars (128 bit)
+			self::$iv = chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0);
+		}
+	//}
+	#endregion 
+
+
+
+
+	
+	// --- LOCAL OPTIONS APPROACH ---
+	public function site_options_path(){
+		return $this->baseDIR.'/_site_options.json';
+	}
+	public function get_site_options_all(){
+		if (property_exists($this,'JSON_CACHED_ALL_OPTIONS'))
+		{
+			return $this->JSON_CACHED_ALL_OPTIONS;
+		}
+		$path = $this->site_options_path();
+		if (!file_exists($path)){
+			$this->localdata_set($path,'{"all_options":{}}');
+		}
+		$this->JSON_CACHED_ALL_OPTIONS = json_decode( $this->file_get_contents($path), []);
+		return $this->JSON_CACHED_ALL_OPTIONS;
+	}
+	public function save_site_options_all($opts){
+		$path = $this->site_options_path();
+		$this->localdata_set($path, $opts);
+	}
+
+	public function update_option_json($option_name, $value){
+		$path = $this->site_options_path();
+		$opts=  $this->get_site_options_all();
+		if (!is_array($option_name)){
+			$opts['all_options'][$option_name] = $value;
+		}
+		else{ 
+			$c = count($option_name);
+			$o = $option_name;
+			if ($c==2) $opts[ $o[0] ][ $o[1] ] = $value;
+			if ($c==3) $opts[ $o[0] ][ $o[1] ][ $o[2] ] = $value;
+			if ($c==4) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ] = $value;
+			if ($c==5) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ][ $o[4] ] = $value;
+			if ($c==6) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ][ $o[4] ][ $o[5] ] = $value;
+			if ($c==7) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ][ $o[4] ][ $o[5] ][ $o[6] ] = $value;
+			if ($c==8) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ][ $o[4] ][ $o[5] ][ $o[6] ][ $o[7] ] = $value;
+		}
+		$this->JSON_CACHED_ALL_OPTIONS = $opts;
+		try { $this->localdata_set($path, json_encode($opts)); } catch (\Exception $e){ die($e->getMessage()); }
+		return true;
+	}
+
+
+	public function get_option_json($option_name, $default_value=''){
+		$opts = $this->get_site_options_all() ;
+		if (!is_array($option_name)){
+			return ( array_key_exists($option_name, $opts['all_options']) ? $opts['all_options'][$option_name] : $default_value );
+		}
+		else{
+			$new_val = $opts;
+			foreach($option_name as $val)
+			{
+				$new_val = $new_val[$val];
+			}
+			return $new_val;
+		}
+	}
+	public function set_default_options( $array, $key_name ){
+		$opts = $this->get_site_options_all();
+		if (!array_key_exists($key_name, $opts)){
+			$opts[$key_name]=[];
+		}
+		foreach($array as $key=>$value){
+			if ( !array_key_exists($key, $opts[$key_name]) ){
+				$opts[$key_name][$key] = $value;
+				$this->update_option_json([$key_name, $key],  $value);
+			}
+		}
+		return $opts[$key_name];
+	}
+
+	public function get_child($array, $name)
+	{
+		if (!is_array($name))
+			return $array[$name];
+		else{
+			$new_val = $array;
+			foreach($name as $val)
+			{
+				$new_val = $new_val[$val];
+			}
+			return $new_val;
+		}
+	}
+	//
+
+
+
+
+	// algo-related functions
+	public function highest($values, $length)
+	{
+		$amount= count($values);
+		$last= max(array_keys($values));//might be empty initial X keys, so dont use "count"
+		$index = $last;
+		$highest= $values[$last];
+		if ($length >= 1){ 
+			for ($i=0; $i<min($amount, $length); $i++){ 
+				$idx= $last-$i;
+				if (array_key_exists($idx, $values)){
+					if ( $values[$idx] > $highest){ 
+						$highest = $values[$idx];
+						$index=$idx;
+					}
+				}
+			}
+		}
+		return ["value"=>$highest, "index"=>$index];
+	}
+	
+	public function lowest($values, $length)
+	{
+		$amount= count($values);
+		$last= max(array_keys($values));//might be empty initial X keys, so dont use "count"
+		$index = $last;
+		$lowest= $values[$last];
+		if ($length >= 1){
+			for ($i=0; $i<min($amount, $length); $i++){ 
+				$idx= $last-$i;
+				if (array_key_exists($idx, $values)){
+					if ( $values[$idx] < $lowest){ 
+						$lowest = $values[$idx];
+						$index=$idx;
+					}
+				}
+			}
+		}
+		return ["value"=>$lowest, "index"=>$index];
+	}
+	
+	
+	
+	public function zip_folder($folderPath, $zip_filepath)
+	{
+		new tempclass_GoodZipArchive($folderPath, $zip_filepath);
+	} 
+
+ 
+
 	public function init_defaults()
 	{
 		try{
@@ -5240,14 +5848,6 @@ class library
 		return $url;
 	}
 
-	public function setLogDir($dir)
-	{
-		$this->logDir = $dir;
-		$this->mkdir($this->logDir);
-	}
-	
-
-
 	// this is not called anywhere in plugins (only for developer exlicit usage)
 	public function get_phpmailer()
 	{
@@ -5255,7 +5855,6 @@ class library
 		$x=  __DIR__ .'/___PHPMailer.php';	if( ! file_exists($x) ){ $this->file_put_contents( $x, $this->get_remote_data('https://raw.githubusercontent.com/PHPMailer/PHPMailer/master/src/PHPMailer.php') );   }
 		include_once($x);
 	}
-
 
 	public function mobile_detect()
 	{
@@ -5396,157 +5995,6 @@ class library
 	}
 
 
-	
-	public function formFromArray($value, $fullKeyName='', $replace_spaces=false, $url='')
-	{
-		?>
-		<form action="<?php echo $url;?>" method="POST">
-		<?php $this->input_fields_from_array_RECURSIVE2($value, $fullKeyName, $replace_spaces); ?>
-		<input type="submit"></form>
-		<?php 
-	}
-
-
-
-
-
-	public $arFieldRecRastKey="";
-	public $arFieldAutoresize=true;
-	public function input_fields_from_array_RECURSIVE2($value, $fullKeyName='', $replace_spaces=false, $cycle=0){
-		$current_key = preg_replace('/(.*)\[(.*?)\]/','$2', $fullKeyName);  //i.e. cc from: aa[bb][cc]
-		$addButtonKeyName = "_ADD_BUTTON_";
-
-		if ($cycle==0)
-		{
-			if ($this->arFieldAutoresize)
-				$this->js_autosize_textarea('.valueTxtArea');
-			?>
-			<style>
-			@media screen and (min-width: 1200px) { 
-				#container-rebox { width: 700px; }
-			}
-			.ArrayFieldsContainer{box-shadow:0px 0px 5px black; font-size:0.8em; } 
-
-			.ArrayFieldsContainer .keyBlock{transition:0.1s all; padding:1px 0px 0px 3px; zmargin:2px 0px 0px 10px; height: 100%; } 
-			.ArrayFieldsContainer > .keyBlock { height: auto; first_block_needs_autoheigh:okk; }
-			.ArrayFieldsContainer .keyBlock:hover{box-shadow:0 0 0 1px black; border:2px black;} 
-			.ArrayFieldsContainer .new_block{ position:relative; border:1px black dashed; margin: 4px; transition:1s all; opacity:1; } 
-			.ArrayFieldsContainer .removing{ height:0px!important; opacity:0!important; } 
-			
-			.ArrayFieldsContainer .each_arr, .ArrayFieldsContainer .each_ln { display:flex; padding:2px 2px 0 5px; zmargin:2px 2px 0 5px; flex-direction:column; } 
-
-			.ArrayFieldsContainer .valueTxtArea{ margin:0 0 0 5px; float:right;     padding: 0px; }  
-
-			.ArrayFieldsContainer .emptyTxtarea[style*="height:2"],.ArrayFieldsContainer .emptyTxtarea[style*="height:3"]{ background:#ff7e7e; _after_change_that_height_changes:"";} 
-			.ArrayFieldsContainer .parentKey{ opacity:0.6; font-size:0.7em; } 
-			.ArrayFieldsContainer .keyname{ min-width: 10px; } 
-			.ArrayFieldsContainer .plus_minus_sign{ font-weight:bold; font-size:1em; } 
-			.ArrayFieldsContainer .plus_minus_sign.sign_minus{ color:red; } 
-			.ArrayFieldsContainer .plus_minus_sign.sign_plus{ color:green; font-size:2em; } 
-			.ArrayFieldsContainer .addhrefBLock { display:block; text-align:center; } 
- 
-			.ArrayFieldsContainer .ancestor_array .keyBlock { display:flex; flex-direction:row; padding:10px 10px 0 10px;} 
-			.ArrayFieldsContainer .ancestor_array .each_ln {display:flex; flex-direction: column;} 
-			.ArrayFieldsContainer textarea { overflow-y: scroll;} 
-			</style>
-			<script>	
-			var parentPredix= "parent_of_";
-			function addNewBlock(evt)
-			{
-				evt.preventDefault();
-				let targ=evt.target; 
-				let parent=targ.parentNode.parentNode;
-				let samplEl= $(parent).find('[class*="'+parentPredix+'"]').first().clone(); 
-				let newKey= prompt("Input new key name");
-				if (typeof PuvoxAddNewBlock_Filter_Func6273 === "function")
-					newKey = PuvoxAddNewBlock_Filter_Func6273(newKey);
-				if(!newKey) return;
-
-				let oldKey= samplEl.data("key"); 
-				samplEl.data("key", newKey);
-				samplEl.find("textarea").text("");
-				
-				let parentkey= samplEl.data("parent"); 
-				let newFullKey=parentkey +"["+newKey+"]"; 
-				let newCont = samplEl.html().replace( new RegExp("(\\[|\>)"+oldKey+"\\b", "g"), '$1'+newKey );
-				samplEl.html(newCont); 
-				$(targ).closest(".new_block").find(".children_cont").first().append(samplEl);
-				//targ.insertAdjacentHTML("beforebegin", newCont);
-			}
-			function removeCurrentBlock(evt, keynm)
-			{
-				evt.preventDefault();
-				if (confirm("U sure to delete this block?"))
-				{
-					let targ	= evt.target; 
-					let parent  = $(targ).closest(".new_block");
-					parent.css("height", parent[0].offsetHeight +"px");
-					window.setTimeout( function(){ parent.addClass("removing"); }, 10 );
-					window.setTimeout( function(){ parent.remove(); }, 1000 );
-				}
-			}
-			</script>
-			<?php
-			
-			//initial
-			echo '<div class="ArrayFieldsContainer">'; 
-		}
-
-		$keyName_BOLDED = preg_replace('/(.*)\[(.*?)\]/','<span class="parentKey">$1</span>[<b>$2</b>]', $fullKeyName);
-		$is_parent_array = !is_array($value) || !array_key_exists('languages', $value) ;
-
-		echo '<div class="keyBlock keyname_'.$fullKeyName.' '.($is_parent_array ? "regular_array" : "ancestor_array").'" style="background:'.$this->random_color('30').'; ">';
-		$style = ' style=""';
-
-		if ( !is_array($value) ){
-			echo '
-			<div class="each_ln" '.$style.'>
-				<div class="keyname">'. $keyName_BOLDED .'</div>
-				<div class="txtar"><textarea class="valueTxtArea '. ( trim($value) =='' ? 'emptyTxtarea' :'') .' key_'.$current_key.'"  name="'.$fullKeyName.'" placeholder="">'. trim($value) .'</textarea></div>
-			</div>';
-		}
-		else{
-			echo  '
-			<div class="each_arr" '.$style.'> 
-				<div class="keyname">'. $keyName_BOLDED .'</div>
-				<div class="children_cont">';
-			$addButtonOnKey=false;
-			foreach ($value as $keyname1=>$value1){
-				if ($keyname1==$addButtonKeyName) {
-					continue;
-				}
-				$newKeyNm = $fullKeyName.'['.$keyname1.']';
-				echo '<div class="new_block parent_of_" data-parent="'.$newKeyNm.'" data-key="'.$keyname1.'">';
-
-				// if array contains empty_placeholder, then it was meant for Adding/Removing for keys
-				if (array_key_exists($addButtonKeyName, $value))
-				{
-					$addButtonOnKey=true;
-					echo '<a href="#" onclick="removeCurrentBlock(event,\''.$newKeyNm.'\')"><span class="plus_minus_sign sign_minus">-delete</span></a>';
-				}
-				
-				$this->arFieldRecRastKey=$keyname1;
-				$this->input_fields_from_array_RECURSIVE2($value1, $newKeyNm,  $replace_spaces, $cycle+1);
-				echo '</div>';
-			}
-			echo '</div>';
-
-			if ($addButtonOnKey)
-			{
-				echo '<a class="addhrefBLock" href="#" onclick="addNewBlock(event)"><span class="plus_minus_sign sign_plus">+ADD</span></a>';
-			}
-			echo '
-			</div>';	
-		}
-		echo '</div>';		
-		if ($cycle==0)
-		{
-			echo '</div>'; 
-		}
-	}
-	 
-
-	
 	public function loadJquery( $id )
 	{ ?> <script>
 		PuvoxLibrary.loadJquery=function()
@@ -5574,29 +6022,13 @@ class library
 		}
 	}
 	
-	public function move_folder_contents($from, $to)
-	{
-		foreach( glob($from ."/*") as $each)
-		{
-			$target=$to."/".basename($each);
-			if(is_dir($target)) {
-				//$this->rmdir_recursive($target);
-			}
-			elseif(is_file($target)) 
-			{
-				@unlink($target);
-				//rename($each, $target);
-			}
-		}
-	}
-		
 	// only for explicit use. Nowhere being used
 	public function Download_Filee( $allowed_directory="/wp-content/uploads/myFiles", $filename=''  )
 	{
 		$filename = basename($filename);
 		$path = ABSPATH. ($FullFile= $allowed_directory.'/'.$filename);
 		//when file doesnt exist
-		if (!file_exists($path)){ echo '<b style="background:red;">error_750 [contact administrator !!]</b><pre>'; $this->var_dump($FullFile);echo '</pre>';exit;}
+		if (!file_exists($path)){ echo '<b style="background:red;">error_750 [cant detect location 53424!!]</b><pre>'; $this->var_dump($FullFile);echo '</pre>';exit;}
 		
 		// Download
 		ob_get_clean();		ini_set('auto_detect_line_endings', true);
@@ -5763,25 +6195,6 @@ class library
 	}
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 	// ######### runtime (auto-generated) scripts & styles ###########
 	public $autogenerated_scripts_names;
 	public $autogenerated_scripts_paths;
@@ -5851,40 +6264,7 @@ class library
 		}
 	}
 	// ################
-		 
-	public function GetJsonedFileData($path,$AsArray=false)	{ return json_decode( (file_exists($path) ? $this->file_get_contents($path) : '{}'), $AsArray) ;  }
-	public function GetSymbolData($name, $AsArray=false)		{ return array('symbol_data'=>GetJsonedFileData(GetSymbolPath($name), $AsArray)    )  ; }
 
-	public function disable_php_in_wpcontent()
-	{
-		if (last_checkpoint('uploads_htaccess', 500000))
-		add_action('init', function() {
-			$uploads_dir = defined('UPLOADS') ? UPLOAD : get_option('upload_path');
-			$uploads_dir = !empty($uploads_dir) ?  $uploads_dir : WP_CONTENT_DIR.'/uploads';
-			$file=$uploads_dir.'/.htaccess';
-			if(!file_exists($file)) {
-				$this->file_put_contents($file, '<Files ~ "\.php">'."\r\n".
-					'Order allow,deny'."\r\n".
-					'Deny from all'."\r\n".
-					'</Files>'
-				);
-			}
-		});
-	}
-
-
-	public function js_debugmode($name='debugmode')
-	{
-		if ( ! defined('PUVOX_js_debugmode') )
-		{
-			define('PUVOX_js_debugmode', true);
-			$this->is_debug_mode= 'true';//$_GET[$name]=="true" ? "true" : "false";
-			$this->debugmode_script = '<script>debug_mode_ ="'. $this->is_debug_mode .'";</script>';
-			add_action('wp_head',	function(){ echo $this->debugmode_script; }, 1); 
-			add_action('admin_head',function(){ echo $this->debugmode_script; }, 1);
-		}
-	}
-	
 	public function createHtaccessDirDisableBrowsing($dir)
 	{
 		$htaccess = $dir .'/.htaccess';
@@ -5920,23 +6300,8 @@ class library
 	}
 
 
-	public function include_phpliteadmin($GET_key, $pla_path, $pass, $dbs_dir, $db_name)
-	{
-		if ( isset($_GET[$GET_key]) || stripos($_SERVER['REQUEST_URI'], "/$GET_key/") !==false )
-		{
-			$password = $pass;
-			$directory = $dbs_dir; //'./databases';
-			$subdirectories = false;	//whether or not to scan the subdirectories of the above directory infinitely deep
-			$databases = [ ['path'=>$db_name, 'name'=>$db_name] ]; //[ [ 'path'=> 'database1.sqlite', 'name'=> 'Database 1' ], ['path'=> 'database2.sqlite','name'=> 'Database 2'] ];
-			$_SERVER['PHP_SELF'] = dirname($_SERVER['REQUEST_URI'])."/";
-			require_once($pla_path);
-			exit;
-		}
-	}
-
-
 	// Create safe logs to analyze attacks
-	// Dont' be afraid - this function is not used anywhere in any of plugins (it is only usable & available if called directly in custom tests by developers, to temporarily monitor any $_POST attacks)
+	// Dont' be afraid - this function is not used anywhere in any of plugins (it is only usable & available if called directly in custom tests by developers, to temporarily monitor any  _POST attacks)
 	public function SaveLogs($dirname= false) 
 	{
 		$currUrl = $_SERVER['REQUEST_URI'];
@@ -6522,208 +6887,7 @@ class library
 		return $GLOBALS['wpdb'] = new wpdb( DB_USER, DB_PASS, DB_NAME, DB_HOST );
 	}
 
-
-
-
-	// REGEXES
-	public function preg_replace_if_inside($str, $phrase, $start, $end)
-	{ 
-		return preg_replace("/(?<=". preg_quote($start).")(.*?|)". $phrase ."(.*?|)(?=".preg_quote($end).")/si", '', $str);
-	}
-		
-	public function splitBy_X_NotInside_YZ($str, $by, $y, $z) //y&z: not inside
-	{ 
-		return preg_split( '/'.$by.'+(?=(?:(?:[^'.$y.']*"){2})*[^'.$z.']*$)/si', $str );
-	}
-	public function splitBy_X_NotInside($content, $by, $array, $ignore_whitespaces=true) //y&z: not inside
-	{ 
-		$lettersArray	= str_split($content);
-		$result	=[];
-		//
-		$lastChar_       ='';
-		$escapeChar_     ='\\';
-		$currentStr      ='';
-		$currentStr_last ='';
-		$is_Active = [];
-		$quoteDoubleId = urlencode( base64_encode( implode("_", ['"','"'] ) ) );
-		$quoteSingleId = urlencode( base64_encode( implode("_", ["'","'"] ) ) );
-		foreach($array as $eachPair)
-		{
-			$eachPairString = urlencode(base64_encode(implode("_",$eachPair)));
-			$is_Active[$eachPairString] = false;
-		}
-		
-		$active_count = 0;
-		foreach($lettersArray as $char_)
-		{
-			$currentStr 		.= $char_;
-			//
-			//if last char was escape, we can ignore current one
-			if ($lastChar_ != $escapeChar_)
-			{ 
-				foreach($array as $eachPair)
-				{
-					$eachPairString = urlencode( base64_encode( implode("_",$eachPair) ) );
-					//skip quote inside quotes:
-					if ($char_ == '"' && $is_Active[$quoteSingleId] )
-						continue;
-					if ($char_ == "'" && $is_Active[$quoteDoubleId] )
-						continue;
-				
-					$char_START		= $eachPair[0];
-					$char_END		= $eachPair[1];
-					$sameChars		= $char_START==$char_END;
-					// we need different cases:
-					if ($sameChars)
-					{
-						if ($char_ == $char_START)
-						{
-							if ( $is_Active[$eachPairString] )
-								{  $is_Active[$eachPairString]=false; $active_count--; }
-							else 					
-								{  $is_Active[$eachPairString]=true; $active_count++; }
-						}							
-					}
-					else{
-						if ( $char_ == $char_START && !$is_Active[$eachPairString])
-						{
-							$is_Active[$eachPairString] = true;
-							$active_count++;
-						}
-						else if ( $char_ == $char_END  && $is_Active[$eachPairString] )
-						{
-							$is_Active[$eachPairString] = false;
-							$active_count--;
-						}
-					}
-				}
-			}
-			//
-			if ( $active_count==0 )
-			{
-				$currLength = strlen($currentStr);
-				if (  $this->endsWith($currentStr, $by) )
-				{
-					if ( $ignore_whitespaces && empty(trim($currentStr_last)) ){
-						//don't add
-					}
-					else{
-						$result[] = trim($currentStr_last);
-					}
-					$currentStr = '';
-				}
-			}
-			$currentStr_last	= $currentStr;
-			$lastChar_			= $char_;
-		} 
-		if (!empty(trim($currentStr))) {
-			$result[] = trim($currentStr);
-		}
-		return $result;
-	}
-	public function replaceIfNotInside($content, $what, $with, $array, $ignore_whitespaces=true) //y&z: not inside
-	{ 
-		$lettersArray	= str_split($content);
-		//
-		$lastChar_       ='';
-		$escapeChar_     ='\\';
-		$currentStr      ='';
-		$currentStr_last ='';
-		$is_Active = [];
-		$quoteDoubleId = urlencode( base64_encode( implode("_", ['"','"'] ) ) );
-		$quoteSingleId = urlencode( base64_encode( implode("_", ["'","'"] ) ) );
-		foreach($array as $eachPair)
-		{
-			$eachPairString = urlencode(base64_encode(implode("_",$eachPair)));
-			$is_Active[$eachPairString] = false;
-		}
-		
-		$active_count = 0;
-		foreach($lettersArray as $char_)
-		{
-			$currentStr 		.= $char_;
-			//if last char was escape, we can ignore current one
-			if ($lastChar_ != $escapeChar_)
-			{
-				foreach($array as $eachPair)
-				{
-					$eachPairString = urlencode( base64_encode( implode("_",$eachPair) ) );
-					//skip quote inside quotes:
-					if ($char_ == '"' && $is_Active[$quoteSingleId] )
-						continue;
-					if ($char_ == "'" && $is_Active[$quoteDoubleId] )
-						continue;
-				
-					$char_START		= $eachPair[0];
-					$char_END		= $eachPair[1];
-					$sameChars		= $char_START==$char_END;
-					// we need different cases:
-					if ($sameChars)
-					{
-						if ($char_ == $char_START)
-						{
-							if ( $is_Active[$eachPairString] )
-								{  $is_Active[$eachPairString]=false; $active_count--; }
-							else 					
-								{  $is_Active[$eachPairString]=true; $active_count++; }
-						}							
-					}
-					else{
-						if ( $char_ == $char_START && !$is_Active[$eachPairString])
-						{
-							$is_Active[$eachPairString] = true;
-							$active_count++;
-						}
-						else if ( $char_ == $char_END  && $is_Active[$eachPairString] )
-						{
-							$is_Active[$eachPairString] = false;
-							$active_count--;
-						}
-					}
-				}
-			}
-			//
-			if ( $active_count==0 )
-			{
-				$currLength = strlen($currentStr);
-				if (  $this->endsWith($currentStr, $what) )
-				{
-					if ( $ignore_whitespaces && empty(trim($currentStr_last)) ){
-						//don't add
-					}
-					else{
-						$currentStr = substr($currentStr, 0, -(strlen($what)) ) . $with;
-					} 
-				}
-			}
-			$currentStr_last	= $currentStr;
-			$lastChar_			= $char_;
-		}
-		return $currentStr;
-	}
-	
-	public function getFromX_tillY_NotInside($content, $from, $till, $array, $regex_index=0, $remove_outside=true) 
-	{
-		$from_ = $from; //this.escapeRegExp(from);
-		preg_match( '/'. $from_ ."(.*)/si", $content, $matches );
-		$result = "";
-		if ($matches != null )
-		{
-			$regex_index_final = $regex_index+1;
-			$foundPart= $matches[$regex_index_final];
-			$splits = $this->splitBy_X_NotInside($foundPart, $till, $array);
-			$result = trim($splits[0]);
-		}
-		return $result;
-	}
-	// ############### REGEXES ###############
-	
-	 
-	
-	public function get_current_buffer_clean($func_name=false){  ob_start(); if ($func_name) {$args=func_get_args(); call_user_func_array($func_name, $args);}  $cont= ob_get_clean(); ob_flush(); return $cont; }
-	
 	// ================ js obfuscation  ============= //
-
 	// https://www.javascriptdeobfuscator.com/
 	// http://deobfuscatejavascript.com/
 	public function get_obfuscated_wiseloop($content, $ar=array()){
@@ -6822,7 +6986,6 @@ class library
 			}
 		}
 	}
-	
 
 	//echo $library->output_obufscated_js("output_js",  ['heroku'=>[], "closure"=>[] ], __DIR__  );
 	public function output_obufscated_js($func_name_OR_content, $level=array(), $cacheDir=__DIR__, $enable_localhost=false)
@@ -6837,46 +7000,6 @@ class library
 		return $this->obfuscated_js_file_name;
 	}
 	// ============ obfuscated js ===========//
-
-
-
-	// css minify //
-	public function minify_css2($css_content)
-	{
-		// some of the following functions to minimize the css-output are directly taken
-		// from the awesome CSS JS Booster: https://github.com/Schepp/CSS-JS-Booster
-		// all credits to Christian Schaefer: http://twitter.com/derSchepp
-		// remove comments
-		$css = preg_replace('!/\*[^*]*\*+([^/][^*]*\*+)*/!', '', $css);
-		// backup values within single or double quotes
-		preg_match_all('/(\'[^\']*?\'|"[^"]*?")/ims', $css, $hit, PREG_PATTERN_ORDER);
-		for ($i=0; $i < count($hit[1]); $i++) {
-			$css = str_replace($hit[1][$i], '##########' . $i . '##########', $css);
-		}
-		// remove traling semicolon of selector's last property
-		$css = preg_replace('/;[\s\r\n\t]*?}[\s\r\n\t]*/ims', "}\r\n", $css);
-		// remove any whitespace between semicolon and property-name
-		$css = preg_replace('/;[\s\r\n\t]*?([\r\n]?[^\s\r\n\t])/ims', ';$1', $css);
-		// remove any whitespace surrounding property-colon
-		$css = preg_replace('/[\s\r\n\t]*:[\s\r\n\t]*?([^\s\r\n\t])/ims', ':$1', $css);
-		// remove any whitespace surrounding selector-comma
-		$css = preg_replace('/[\s\r\n\t]*,[\s\r\n\t]*?([^\s\r\n\t])/ims', ',$1', $css);
-		// remove any whitespace surrounding opening parenthesis
-		$css = preg_replace('/[\s\r\n\t]*{[\s\r\n\t]*?([^\s\r\n\t])/ims', '{$1', $css);
-		// remove any whitespace between numbers and units
-		$css = preg_replace('/([\d\.]+)[\s\r\n\t]+(px|em|pt|%)/ims', '$1$2', $css);
-		// shorten zero-values
-		$css = preg_replace('/([^\d\.]0)(px|em|pt|%)/ims', '$1', $css);
-		// constrain multiple whitespaces
-		$css = preg_replace('/\p{Zs}+/ims',' ', $css);
-		// remove newlines
-		$css = str_replace(array("\r\n", "\r", "\n"), '', $css);
-		// Restore backupped values within single or double quotes
-		for ($i=0; $i < count($hit[1]); $i++) {
-			$css = str_replace('##########' . $i . '##########', $hit[1][$i], $css);
-		}
-		return $css;
-	}
 
 	public function minify_css1($css_content)
 	{
@@ -6893,665 +7016,7 @@ class library
 		curl_close($ch);
 		return $minified;
 	}
-	
-	
-
-	// ############ youtube funcs ###########
-	// 'flags' contains many-info about video
-	public function youtube_data($ytVideoId, $api_redirect_url=null)	{ 
-		$targetUrl = 'https://youtube.com/get_video_info?video_id='.$ytVideoId;
-		// when Youtube Blocks this Server's IP, use 3rd party:
-		// $ResponserUrl = 'http://my_another_clean_host_site.com/youtube_info.php?yt_id=';   and this code: pastebin_com/dxigxnNH
-		// if external server is used
-		if (!empty($api_redirect_url)) 
-			$targetUrl = $api_redirect_url . urlencode($targetUrl);
-		$data = $this->file_get_contents($targetUrl);
-		parse_str($data , $full_info); 
-		return $full_info;		
-	} 
-
-	public function youtube_mediafiles($data)	{ 
-		$n1 = json_decode( $data['player_response'], true);
-		$streamingData	 = $n1['streamingData'];
-		$formats 		 = $streamingData['formats']; 			// contains Video with audio, i.e. example :  pastebin_com/R0n1jC9W
-		$adaptiveFormats = $streamingData['adaptiveFormats'];	// contains separated streams (videos / audios):   pastebin_com/qui0w8BB
-		$audiosArray = [];
-		// we need only audios (as videos dont have an audio)
-		foreach ($adaptiveFormats as $each) {
-			if ( stripos($each['mimeType'], 'audio/') !== false ) {
-				$audiosArray[] = $each;
-			}
-		} 
-		$res = ['status'=>'success', 'data'=>['videos'=> $formats, 'audios'=>$audiosArray] ];
-		return $res;
-	}
-	public function youtube_video_details($data)	{ 
-		$arr = json_decode( $data['player_response'], true);
-		return $arr['videoDetails'];
-	}
-	public function youtube_best_audio($audios_or_videos)	{ 
-		$max_array = [];
-		foreach($audios_or_videos as $each_A_V){ 
-			if (empty($max_array) || $each_A_V['contentLength'] > $max_array['contentLength'] ) 	
-				$max_array = $each_A_V;
-		}
-		return $max_array;
-	}
-	public function youtube_low_video($mediaFiles)	{ 
-		$fileUrl ='';
-		foreach($mediaFiles['data']['videos'] as $each)
-		{
-			if ($each['audioQuality']=='AUDIO_QUALITY_LOW')
-			{
-				$fileUrl = $each['url'];
-			}
-		}
-		return $fileUrl;
-	}
-	public function youtube_file_url($array){
-		if (array_key_exists('url', $array) ){
-			return $array['url'];
-		}
-		elseif (array_key_exists('signatureCipher', $array) ){
-			$sig = $array['signatureCipher'];
-			parse_str(  str_replace('\\u0026','&', $sig), $array);
-			return $array['url'];
-		}
-		else{
-			return "INVALID_DATA. CANT GET URL from: ". print_r($array,true);
-		}
-	}
-	public function youtube_curl($url)
-	{
-		$ch=curl_init();
-		curl_setopt($ch,CURLOPT_USERAGENT, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.35 (KHTML, like Gecko) Chrome/84.0.4147.00 Safari/537.35");
-		curl_setopt($ch,CURLOPT_URL,$url);
-		curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
-		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,0);
-		curl_setopt($ch,CURLOPT_HEADER,0);
-		curl_setopt($ch,CURLOPT_FOLLOWLOCATION,1);
-		curl_setopt($ch,CURLOPT_TIMEOUT,100000);
-
-		$curl_output=curl_exec($ch);
-		$curlstatus=curl_getinfo($ch);
-		curl_close($ch);
-
-		return $curl_output;
-	}
-	//
-	
-	
-	
-	
-	
-	// ### ERRORS TABLE ### //
-	public function sqlite_error_db_init($db_dir=false, $db_name=false, $PLA=[], $TELEGRAM=[])
-	{
-		$sqlite_db_path= $db_dir . $db_name;
-		$db = $this->sqlite_db_init( $sqlite_db_path );
-        if (!empty($PLA))
-			$this->include_phpliteadmin($PLA['url'], $PLA['path'], $PLA['pass'], $db_dir, $db_name);
-		$this->SQLITE_ERRORS_DB_INSTANCE = $db;
-	}
-	public function sqlite_error_table_create($db, $tablename)
-	{
-		$db->exec( "CREATE TABLE IF NOT EXISTS {$tablename} (
-			id INTEGER PRIMARY KEY, 
-			title TEXT, 
-			text TEXT, 
-			status TEXT,
-			url TEXT, 
-			time INTEGER)"
-		);
-	}
-	public function sqlite_error_log($db, $tablename, $title, $text, $status=null)
-	{
-		$db = $db ?: $this->SQLITE_ERRORS_DB_INSTANCE;
-		$this->sqlite_error_table_create($db, $tablename);
-        $sql = 'INSERT INTO '.$tablename.'(title,text,status,url,time) VALUES( "'.($title ?: '').'", "'.($text ?: '').'", "'.($status ?: '').'", "'.$this->requestURL.'" , "'. time().'")';
-        //if ( ! $this->helpers->is_localhost ) $this->helpers->telegramMsg( $this->tg_errorbot['key'], $this->tg_errorbot['chat'], $title .'::::'. $text);
-		return $db->exec($sql);
-    }
-	public function slog($title, $text, $db=null, $tablename='all_errors')
-	{
-		return $this->sqlite_error_log($db, $tablename, $title, $text);
-    }
-	// ##################### //
  
-
-
-
-
-	// ########## Caching ########## //
-	/*
-	public function save_cach($data, $name, $timeout) {
-		return $this->save_cache($data, $name, $timeout);
-	}
-	public function save_cache($data, $name, $timeout) {
-		// delete cache
-		$id=shmop_open($this->get_cache_id($name), "a", 0, 0);
-		shmop_delete($id);
-		shmop_close($id);
-	   
-		// get id for name of cache
-		$id=shmop_open($this->get_cache_id($name), "c", 0644, strlen(serialize($data)));
-	   
-		// return int for data size or boolean false for fail
-		if ($id) {
-			$this->set_timeout($name, $timeout);
-			return shmop_write($id, serialize($data), 0);
-		}
-		else return false;
-	}
-	public function get_cache($name) {
-		if (!check_timeout($name)) {
-			$id=shmop_open($this->get_cache_id($name), "a", 0, 0);
-
-			if ($id) $data=unserialize(shmop_read($id, 0, shmop_size($id)));
-			else return false;          // failed to load data
-
-			if ($data) {                // array retrieved
-				shmop_close();
-				return $data;
-			}
-			else return false;          // failed to load data
-		}
-		else return false;              // data was expired
-	}
-	public function get_cache_id($name) {
-		// maintain list of caches here
-		$id=array('test1' => 1, 'test2' => 2 );
-		return $id[$name];
-	}
-	//
-	public function set_timeout($name, $int) {
-		$timeout=new DateTime(date('Y-m-d H:i:s'));
-		date_add($timeout, date_interval_create_from_date_string("$int seconds"));
-		$timeout=date_format($timeout, 'YmdHis');
-
-		$id=shmop_open(100, "a", 0, 0);
-		if ($id) $tl=unserialize(shmop_read($id, 0, shmop_size($id)));
-		else $tl=array();
-		shmop_delete($id);
-		shmop_close($id);
-
-		$tl[$name]=$timeout;
-		$id=shmop_open(100, "c", 0644, strlen(serialize($tl)));
-		shmop_write($id, serialize($tl), 0);
-	}
-	public function check_timeout($name) {
-		$now=new DateTime(date('Y-m-d H:i:s'));
-		$now=date_format($now, 'YmdHis');
-
-		$id=shmop_open(100, "a", 0, 0);
-		if ($id) $tl=unserialize(shmop_read($id, 0, shmop_size($id)));
-		else return true;
-		shmop_close($id);
-
-		$timeout=$tl[$name];
-		return (intval($now)>intval($timeout));
-	}
-	*/
-	// ############################### //
-
-
-
-	
-	#region PHP to PHP/C# encryption/description :
-	// https://puvox.software/blog/two-way-encryption-decryption-between-php-and-c-sharp/
-	//public static class EncryptDecrypt {
-		public static function encrypt($plaintext, $password, $method= 'aes-256-cbc'){
-			self::helper__encrypt_decrypt_stream($password);
-			return base64_encode(openssl_encrypt($plaintext, $method, self::password_shuffled, OPENSSL_RAW_DATA, self::iv));
-		}
-
-		public static function decrypt($encrypted, $password, $method= 'aes-256-cbc'){
-			self::helper__encrypt_decrypt_stream($password);
-			return openssl_decrypt(base64_decode($encrypted), $method, self::password_shuffled, OPENSSL_RAW_DATA, self::iv);
-		}
-		
-		public static function helper__encrypt_decrypt_stream($password, $method= 'aes-256-cbc'){
-			// Must be exact 32 chars (256 bit)
-			self::$password_shuffled = substr(hash('sha256', $password, true), 0, 32);		
-			// IV must be exact 16 chars (128 bit)
-			self::$iv = chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0) . chr(0x0);
-		}
-	//}
-	#endregion 
-
-
-
-
-	
-	// --- LOCAL OPTIONS APPROACH ---
-	public function site_options_path(){
-		return $this->baseDIR.'/_site_options.json';
-	}
-	public function get_site_options_all(){
-		if (property_exists($this,'JSON_CACHED_ALL_OPTIONS'))
-		{
-			return $this->JSON_CACHED_ALL_OPTIONS;
-		}
-		$path = $this->site_options_path();
-		if (!file_exists($path)){
-			$this->file_put_contents($path,'{"all_options":{}}');
-		}
-		$this->JSON_CACHED_ALL_OPTIONS = json_decode( $this->file_get_contents($path), []);
-		return $this->JSON_CACHED_ALL_OPTIONS;
-	}
-	public function save_site_options_all($opts){
-		$path = $this->site_options_path();
-		$this->file_put_contents($path, $opts);
-	}
-
-	public function update_option_json($option_name, $value){
-		$path = $this->site_options_path();
-		$opts=  $this->get_site_options_all();
-		if (!is_array($option_name)){
-			$opts['all_options'][$option_name] = $value;
-		}
-		else{ 
-			$c = count($option_name);
-			$o = $option_name;
-			if ($c==2) $opts[ $o[0] ][ $o[1] ] = $value;
-			if ($c==3) $opts[ $o[0] ][ $o[1] ][ $o[2] ] = $value;
-			if ($c==4) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ] = $value;
-			if ($c==5) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ][ $o[4] ] = $value;
-			if ($c==6) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ][ $o[4] ][ $o[5] ] = $value;
-			if ($c==7) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ][ $o[4] ][ $o[5] ][ $o[6] ] = $value;
-			if ($c==8) $opts[ $o[0] ][ $o[1] ][ $o[2] ][ $o[3] ][ $o[4] ][ $o[5] ][ $o[6] ][ $o[7] ] = $value;
-		}
-		$this->JSON_CACHED_ALL_OPTIONS = $opts;
-		try { $this->file_put_contents($path, json_encode($opts)); } catch (\Exception $e){ die($e->getMessage()); }
-		return true;
-	}
-
-
-	public function get_option_json($option_name, $default_value=''){
-		$opts = $this->get_site_options_all() ;
-		if (!is_array($option_name)){
-			return ( array_key_exists($option_name, $opts['all_options']) ? $opts['all_options'][$option_name] : $default_value );
-		}
-		else{
-			$new_val = $opts;
-			foreach($option_name as $val)
-			{
-				$new_val = $new_val[$val];
-			}
-			return $new_val;
-		}
-	}
-	public function set_default_options( $array, $key_name ){
-		$opts = $this->get_site_options_all();
-		if (!array_key_exists($key_name, $opts)){
-			$opts[$key_name]=[];
-		}
-		foreach($array as $key=>$value){
-			if ( !array_key_exists($key, $opts[$key_name]) ){
-				$opts[$key_name][$key] = $value;
-				$this->update_option_json([$key_name, $key],  $value);
-			}
-		}
-		return $opts[$key_name];
-	}
-
-	public function get_child($array, $name)
-	{
-		if (!is_array($name))
-			return $array[$name];
-		else{
-			$new_val = $array;
-			foreach($name as $val)
-			{
-				$new_val = $new_val[$val];
-			}
-			return $new_val;
-		}
-	}
-	//
-
-
-
-
-	// =================================================================================== //
-	// ==================================== SOCIAL LINKS ================================= //
-	// =================================================================================== //
-
-	public function socialss_Dataa(){
-		$x = get_option('my_socials_optsszz');
-		if (empty($x['sitesList']))	{ $x['sitesList']	= array('facebook','youtube','googleplus','twitter','pinterest','deviantart','mailsubscribe'); }
-		if (empty($x['langzz']))	{ $x['langzz']		= array('geo','eng','rus'); }
-		if (empty($x['Datas']))		{ $x['Datas']		= array('facebook_ENABLED__geo'=>1,'facebook_URL__geo'=>'https://facebook.com','facebook_TITLE__geo'=>'Like Our Facebook');}
-		return $x;
-	} 
-
-	public function funccc413() {
-		//add_menu_page('sample_page', 'sample_page', 'administrator','smpl_pggg', 'fnc34252');
-		add_submenu_page('options-general.php' , 'My SOCIAL LINKS', 'SOCIAL LINKS', 'manage_options', 'mysubpage-slug133', 'fnc34252' ); } public function fnc34252() 	{
-			
-		//if updated
-		if (isset($_POST['securit_noncee'])){    $this->NonceCheckk(sanitize_text_field($_POST['securit_noncee']),'fupd_mlss');
-			$ARRAY=socialss_Dataa();
-			$ARRAY['langzz']	= explode(",",  sanitize_text_field($_POST['langzz']));
-			foreach ($_POST as $name=>$value) {$ARRAY['Datas'][$name]=sanitize_text_field($value);}
-			update_option('my_socials_optsszz', $ARRAY );
-		}
-		//get the latest
-		$ARRAY=socialss_Dataa();
-
-		?>
-		<form action="" method="POST" class="news_meetinggs">
-			<?php 	//wp_editor( htmlspecialchars_decode(get_option('nwsMTNG_notes_'.$laang)), 'mtng_notes_styl_ID'. $laang, $settings = array('textarea_name'=>'nwsMTNG_notes_'. $laang,  'editor_class' => "editoor_nws_note")); ?>
-			<h2>Social Links</h2>
-			Your site Languages(initials): <input type="text" value="<?php echo implode(",",  $ARRAY['langzz']);?>" name="langzz" placeholder="geo,eng,rus.." />
-			</br><br/>
-			<table border=1><tbody>
-				<tr><?php foreach($ARRAY['sitesList'] as $e) {echo '<td style="background-color:#FFEAEF; text-align:center; font-weight:bold;"><h2>'.$e.'</h2></td>';} ?></tr>
-				<?php foreach($ARRAY['langzz'] as $each_lang) { ?>
-				<tr><td colspan="4" style="border:none;"><h3 style="margin: 2em 0px 0;"><?php echo $each_lang;?> </h3></td> </tr>
-				<tr>
-					<?php foreach ($ARRAY['sitesList'] as $each_social) { 
-					$enabl	= $each_social.'_ENABLED__'.$each_lang;
-					$url	= $each_social.'_URL__'.$each_lang;
-					$title	= $each_social.'_TITLE__'.$each_lang;
-					?>
-					<td>
-						<span class="description">(Enabled:
-						<input name="<?php echo $enabl;?>"	type="checkbox" value="1" <?php if (Return_If_Array_Key($ARRAY['Datas'],$enabl)) {echo 'checked="checked"';} ;?> />)
-						</span>
-						<input name="<?php echo $url;?>"	type="text"		value="<?php echo Return_If_Array_Key($ARRAY['Datas'],$url); ?>"	placeholder="https://..." class="regular-text" />
-						<input name="<?php echo $title;?>"	type="text"		value="<?php echo Return_If_Array_Key($ARRAY['Datas'],$title); ?>"	placeholder="Title here..." class="regular-text" />
-					</td>
-					<?php } ?>
-				</tr>
-				<?php } ?>
-			</tbody></table>
-			
-			<div class="my_save_divv" style="text-align:center; position:fixed; bottom:20px; left:40%; padding:10px; background-color: red;"><input type="submit" class="my_SUBMITT" value="SAVE" /></div> <input type="hidden" name="securit_noncee" value="<?php echo wp_create_nonce('fupd_mlss'); ?>" />
-		</form>
-		<?php 
-	}
-
-	public function Output_socials($lang=''){ $opts = socialss_Dataa();
-		if (empty($lang)) {$lngs = array_filter($opts['langzz']); $lang= $lngs[0]; }
-		$output	='<div class="socialss">';
-			foreach ($opts['sitesList'] as $key=>$each_social){
-				$enbled = 	(Return_If_Array_Key($opts['Datas'],$each_social.'_ENABLED__'.$lang)) ? 	true: false;
-				if ($enbled){
-					$output .= '<a class="sc_a" href="'.Return_If_Array_Key($opts['Datas'],$each_social.'_URL__'.$lang).'" target="_blank"><div class="eachd '.$each_social.'"><div class="sLogo"></div><div class="sPhraze">'.Return_If_Array_Key($opts['Datas'],$each_social.'_TITLE__'.$lang).'</div></div></a>';
-				}
-			}
-		$output .='</div>';
-		return $output;
-	}
-	// ============================================ ## SOCIAL LINKS ========================================= //
-
-
-
-
-
-
-	// algo-related functions
-	public function highest($values, $length)
-	{
-		$amount= count($values);
-		$last= max(array_keys($values));//might be empty initial X keys, so dont use "count"
-		$index = $last;
-		$highest= $values[$last];
-		if ($length >= 1){ 
-			for ($i=0; $i<min($amount, $length); $i++){ 
-				$idx= $last-$i;
-				if (array_key_exists($idx, $values)){
-					if ( $values[$idx] > $highest){ 
-						$highest = $values[$idx];
-						$index=$idx;
-					}
-				}
-			}
-		}
-		return ["value"=>$highest, "index"=>$index];
-	}
-	
-	public function lowest($values, $length)
-	{
-		$amount= count($values);
-		$last= max(array_keys($values));//might be empty initial X keys, so dont use "count"
-		$index = $last;
-		$lowest= $values[$last];
-		if ($length >= 1){
-			for ($i=0; $i<min($amount, $length); $i++){ 
-				$idx= $last-$i;
-				if (array_key_exists($idx, $values)){
-					if ( $values[$idx] < $lowest){ 
-						$lowest = $values[$idx];
-						$index=$idx;
-					}
-				}
-			}
-		}
-		return ["value"=>$lowest, "index"=>$index];
-	}
-	
-	public function correct_incomplete_barsdata($result)
-	{
-		$res = $this->str_replace_last("],", "]]", $result);
-		$res = preg_replace('/\]\](.*)/',']]', $res);
-		//if kucoin
-		if(stripos($result, '"code":"')!==false) $res = str_replace("]]", "]]}", $res);
-		return $res;
-	}
-	
-
-
-	
-	public function zip_folder($folderPath, $zip_filepath)
-	{
-		// if (!class_exists('GoodZipArchive')) {
-		// 	class GoodZipArchive extends \ZipArchive 
-		// 	{
-		// 		public function __construct($a=false, $b=false) { $this->create_func($a, $b);  }
-
-		// 		public function create_func($input_folder=false, $output_zip_file=false)
-		// 		{
-		// 			if($input_folder !== false && $output_zip_file !== false)
-		// 			{
-		// 				$res = $this->open($output_zip_file, \ZipArchive::CREATE);
-		// 				if($res === TRUE)   { $this->addDir($input_folder, basename($input_folder)); $this->close(); }
-		// 				else                { echo 'Could not create a zip archive. Contact Admin.'; }
-		// 			}
-		// 		}
-
-		// 		// Add a Dir with Files and Subdirs to the archive
-		// 		public function addDir($location, $name) {
-		// 			$this->addEmptyDir($name);
-		// 			$this->addDirDo($location, $name);
-		// 		}
-
-		// 		// Add Files & Dirs to archive 
-		// 		private function addDirDo($location, $name) {
-		// 			$name .= '/';         $location .= '/';
-		// 			// Read all Files in Dir
-		// 			$dir = opendir ($location);
-		// 			while ($file = readdir($dir))    {
-		// 				if ($file == '.' || $file == '..') continue;
-		// 			// Rekursiv, If dir: GoodZipArchive::addDir(), else ::File();
-		// 				$do = (filetype( $location . $file) == 'dir') ? 'addDir' : 'addFile';
-		// 				$this->$do($location . $file, $name . $file);
-		// 			}
-		// 		} 
-		// 	}
-		// }
-		new GoodZipArchive($folderPath, $zip_filepath);
-	} 
-
-
-	#region TRANSLATIONS DB create
-	/*
-				$transl = new TranslationsDB("db_all");   
-				$transl->set("programName",		$_REQUEST['program']); 
-				$transl->set("lang",			$_REQUEST['lang']);
-				// for useing automatizations:
-				$transl->set("gtranslateApiKey",		"A0KQX8IzaSyBXPdIc8UNx"); 
-				$transl->set("correctKey",		"nmshig39fDH"); 
-				$transl->set("developerKey",	(!empty($_GET['developerKey']) ? $_GET['developerKey'] : '') ) ; 
-					
-	*/
-	public static function create_connection_($db_path="/example/my.db_or_sqlite3", $pdo=true){
-		try {
-			if ( $pdo )
-			{
-				$db = new PDO('sqlite:'.$db_path);
-				$db ->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);	// Set errormode to exceptions
-			}
-			else{
-				$db = new SQLite3($db_path);
-			}
-		} catch(Exception $e) {
-			die('Error: '.$e->getMessage());
-		}
-		return $db ;
-	}
-
-	//db->exec($command);
-	//db->prepare($command='INSERT INTO translations ( string, lang, value ) VALUES (:string, :lang, :value);');
-	
-	private	$db						= null;
-	public $lang					= "";
-	public $found					= false;
-	// user opts
-	public $programName				= "example";
-	public $gtranslateApiKey		= "";
-	public $isDeveloper				= false; 
-	public $helpers;
-	
-	public function __construct_TranslationsDB($db_name="db_translations.db", $helpers=null) { 
-		$this->db		= generic_funcs::create_connection_($db_name);
-		$this->create_translations_table();
-		$this->helpers = $helpers;
-	}
-
-	public function set($name, $value) {
-		$this->$name=$value;
-	}
-	
-	public function create_translations_table() {
-		$sql =
-		'CREATE TABLE IF NOT EXISTS translations (	
-			ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			program_name		VARCHAR(150),
-			string				TEXT 	NOT NULL,
-			lang				TEXT 	NOT NULL,
-			value				TEXT 	NOT NULL,
-			time				INT,
-			suggestion			TEXT
-		);';
-		return $this->db->query($sql);     //possibles: VARCHAR(50)  ,  PRIMARY KEY (`ID`), UNIQUE KEY `ID` (`ID`) 	) AUTO_INCREMENT=1;'; 
-	}
-
-
-	public function insert_translation($string, $lang, $value, $time, $program_name, $suggestion) { 
-		$statement = $this->db->prepare('INSERT INTO translations ( string, lang, value, time, program_name, suggestion ) VALUES (:string, :lang, :value, :time, :program_name,  :suggestion );');
-		$statement->bindValue(':string',		$string);
-		$statement->bindValue(':lang',			$lang);
-		$statement->bindValue(':value',			$value);
-		$statement->bindValue(':time',			$time);
-		$statement->bindValue(':program_name',	$program_name);
-		$statement->bindValue(':suggestion',	$suggestion);
-		return $statement->execute();
-	}
-
-	public function string_exists($string, $lang=false, $program_name=false) 
-	{
-		$statement = $this->db->prepare('SELECT * from translations where string= :string'. ( $lang? ' and lang = :lang' : '') .' LIMIT 1' ); // . ( $program_name? ' and program_name = :program_name' : '') 
-		$statement->bindValue(':string',	$string);
-			if ($lang)			
-		$statement->bindValue(':lang',	$lang); 
-		$res = $statement->execute();  
-		return !empty($res->fetchArray(SQLITE3_ASSOC));
-	}
-
-	// for single translations
-	public function get_translation($string, $lang=false, $program_name=false) 
-	{
-		$lang =  $lang ?: $this->lang;
-		
-		try {
-			// if bulk translation
-			if(is_array($string))
-			{
-				$lang =  $lang ?: $this->lang;
-				$array=[];
-				// bulk translate with Google, if this language doesnt exist
-				if ( !$this->string_exists($string[0], $lang) &&  (  $this->string_exists($string[0])  || $this->isDeveloper )  )
-				{
-					$this->gtranslate($string, $lang);
-				}
-				foreach ($string as $each){
-					$array[$each]= $this->get_translation($each, $lang, $program_name);
-				}
-				return $array;
-			}
-			//if single translation
-			else
-			{
-				$return= $string;
-				$statement = $this->db->prepare('SELECT * from translations where string= :string and lang= :lang ');  //. ( $program_name? ' program_name = :program_name' : '') 
-				$statement->bindParam(':string',$string);
-				$statement->bindParam(':lang',	$lang);
-				$ret = $statement->execute(); 
-				$res = $ret->fetchArray(SQLITE3_ASSOC);
-				if(!empty($res)){
-					$this->found=true;
-					$return= $res['value'];
-				}
-				else{
-					$this->found=false;
-					if ( $this->string_exists($string) || $this->isDeveloper ){
-						$res= $this->gtranslate($string, $lang);
-						if (array_key_exists($string, $res))
-						{
-							$value = $res[$string];
-							$return= $value;
-						}
-					}
-				}
-			}
-		}
-		catch (Exception $e){
-			$return=$string;
-		}
-		return $return;
-	}
-	 
-	public function gtranslate($q, $target, $sourceEng=false, $gtranslateApiKey=false)
-	{
-		$q_string =     !is_array($q)      ?      'q='.urlencode($q)  	  :     'q='.implode("&q=", array_map('urlencode',$q) ); 
-		$res=$this->curl("https://www.googleapis.com/language/translate/v2?" .$q_string , ['target'=>$target, 'source'=>($source ?: "en"), 'key'=>($gtranslateApiKey ?: $this->gtranslateApiKey)]  );
-		$array= json_decode($res, true);
-		$transl_result = $array['data']['translations'];
-
-		// format data correctly 
-		$assoc=[];
-		if(is_array($q)){
-			if (count($q) != count($transl_result))
-			{
-				exit("error in translation pairs: ". print_r($q,true) . PHP_EOL . print_r($transl_result,true) );
-			}
-			for($i=0; $i < count($q); $i++)
-			{
-				$assoc[$q[$i]] = $value = $transl_result[$i]['translatedText']; 
-				$this->insert_translation($q[$i], $target, $value, time(), $this->programName, "");
-			}
-			return $assoc;
-		}
-		else{
-			$assoc[$q] =  $value =  $transl_result[0]['translatedText'];
-			$this->insert_translation($q, $target, $value, time(), $this->programName, "");
-			return $assoc;
-		}
-	}
-	#endregion ----TranslationsDB-----
-
 
 
 	public function twitter_exchange_init (){
@@ -7706,7 +7171,7 @@ class tempclass_file {
 	}
 	*/
 
-}
+} // templcass_file
 
 class tempclass_cache_file {
 
@@ -8161,7 +7626,7 @@ class tempclass_cache_file {
 		}
 	}
 	public function clearCacheIdsOnCall($param_name){ 
-		if (isset($_GET[$param_name]))
+		if (isset($_ GET[$param_name]))
 		{
 			$this->clearCacheIds('todo');
 		}
@@ -8254,11 +7719,209 @@ class tempclass_cache_file {
 	*/
 	
 
-}
+} // tempclass_cache_file
+
+ 
+class tempclass_GoodZipArchive extends \ZipArchive {
+	public function __construct($a=false, $b=false) { $this->create_func($a, $b);  }
+
+	public function create_func($input_folder=false, $output_zip_file=false)
+	{
+		if($input_folder !== false && $output_zip_file !== false)
+		{
+			$res = $this->open($output_zip_file, \ZipArchive::CREATE);
+			if($res === TRUE)   { $this->addDir($input_folder, basename($input_folder)); $this->close(); }
+			else                { echo 'Could not create a zip archive, probably write permissions. Contact Admin.'; }
+		}
+	}
+
+	// Add a Dir with Files and Subdirs to the archive
+	public function addDir($location, $name) {
+		$this->addEmptyDir($name);
+		$this->addDirDo($location, $name);
+	}
+
+	// Add Files & Dirs to archive 
+	private function addDirDo($location, $name) {
+		$name .= '/';         $location .= '/';
+		// Read all Files in Dir
+		$dir = opendir ($location);
+		while ($file = readdir($dir))    {
+			if ($file == '.' || $file == '..') continue;
+		// Rekursiv, If dir: GoodZipArchive::addDir(), else ::File();
+			$do = (filetype( $location . $file) == 'dir') ? 'addDir' : 'addFile';
+			$this->$do($location . $file, $name . $file);
+		}
+	} 
+} // tempclass_GoodZipArchive
+
+class tempclass_translations {
+	#region TRANSLATIONS DB create
+	/*
+		$transl = new TranslationsDB("db_all");   
+		$transl->set("programName",		$_REQUEST['program']); 
+		$transl->set("lang",			$_REQUEST['lang']);
+		// for useing automatizations:
+		$transl->set("gtranslateApiKey",		"A1KQX8Iza...."); 
+		$transl->set("correctKey",		"nmsE3hig..."); 
+		$transl->set("developerKey",	'adGFfger..' ) ; 
+			
+	*/
+	public static function create_connection_($db_path="/example/my.db_or_sqlite3", $pdo=true){
+		try {
+			if ( $pdo )
+			{
+				$db = new PDO('sqlite:'.$db_path);
+				$db ->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);	// Set errormode to exceptions
+			}
+			else{
+				$db = new SQLite3($db_path);
+			}
+		} catch(Exception $e) {
+			die('Error: '.$e->getMessage());
+		}
+		return $db ;
+	}
+
+	//db->exec($command);
+	//db->prepare($command='INSERT INTO translations ( string, lang, value ) VALUES (:string, :lang, :value);');
+	
+	private	$db						= null;
+	public $lang					= "";
+	public $found					= false;
+	// user opts
+	public $programName				= "example";
+	public $gtranslateApiKey		= "";
+	public $isDeveloper				= false; 
+	public $helpers;
+	
+	public function __construct_TranslationsDB($db_name="db_translations.db", $helpers=null) { 
+		$this->db		= generic_funcs::create_connection_($db_name);
+		$this->create_translations_table();
+		$this->helpers = $helpers;
+	}
+
+	public function set($name, $value) {
+		$this->$name=$value;
+	}
+	
+	public function create_translations_table() {
+		$sql =
+		'CREATE TABLE IF NOT EXISTS translations (	
+			ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+			program_name		VARCHAR(150),
+			string				TEXT 	NOT NULL,
+			lang				TEXT 	NOT NULL,
+			value				TEXT 	NOT NULL,
+			time				INT,
+			suggestion			TEXT
+		);';
+		return $this->db->query($sql);     //possibles: VARCHAR(50)  ,  PRIMARY KEY (`ID`), UNIQUE KEY `ID` (`ID`) 	) AUTO_INCREMENT=1;'; 
+	}
 
 
+	public function insert_translation($string, $lang, $value, $time, $program_name, $suggestion) { 
+		$statement = $this->db->prepare('INSERT INTO translations ( string, lang, value, time, program_name, suggestion ) VALUES (:string, :lang, :value, :time, :program_name,  :suggestion );');
+		$statement->bindValue(':string',		$string);
+		$statement->bindValue(':lang',			$lang);
+		$statement->bindValue(':value',			$value);
+		$statement->bindValue(':time',			$time);
+		$statement->bindValue(':program_name',	$program_name);
+		$statement->bindValue(':suggestion',	$suggestion);
+		return $statement->execute();
+	}
 
+	public function string_exists($string, $lang=false, $program_name=false) 
+	{
+		$statement = $this->db->prepare('SELECT * from translations where string= :string'. ( $lang? ' and lang = :lang' : '') .' LIMIT 1' ); // . ( $program_name? ' and program_name = :program_name' : '') 
+		$statement->bindValue(':string',	$string);
+			if ($lang)			
+		$statement->bindValue(':lang',	$lang); 
+		$res = $statement->execute();  
+		return !empty($res->fetchArray(SQLITE3_ASSOC));
+	}
 
+	// for single translations
+	public function get_translation($string, $lang=false) 
+	{
+		$lang =  $lang ?: $this->lang;
+		
+		try {
+			// if bulk translation
+			if(is_array($string))
+			{
+				$lang =  $lang ?: $this->lang;
+				$array=[];
+				// bulk translate with Google, if this language doesnt exist
+				if ( !$this->string_exists($string[0], $lang) &&  (  $this->string_exists($string[0])  || $this->isDeveloper )  )
+				{
+					$this->gtranslate($string, $lang);
+				}
+				foreach ($string as $each){
+					$array[$each]= $this->get_translation($each, $lang);
+				}
+				return $array;
+			}
+			//if single translation
+			else
+			{
+				$return= $string;
+				$statement = $this->db->prepare('SELECT * from translations where string= :string and lang= :lang ');  //. ( $program_name? ' program_name = :program_name' : '') 
+				$statement->bindParam(':string',$string);
+				$statement->bindParam(':lang',	$lang);
+				$ret = $statement->execute(); 
+				$res = $ret->fetchArray(SQLITE3_ASSOC);
+				if(!empty($res)){
+					$this->found=true;
+					$return= $res['value'];
+				}
+				else{
+					$this->found=false;
+					if ( $this->string_exists($string) || $this->isDeveloper ){
+						$res= $this->gtranslate($string, $lang);
+						if (array_key_exists($string, $res))
+						{
+							$value = $res[$string];
+							$return= $value;
+						}
+					}
+				}
+			}
+		}
+		catch (Exception $e){
+			$return=$string;
+		}
+		return $return;
+	}
+	 
+	public function gtranslate($q, $target, $sourceEng=false, $gtranslateApiKey=false)
+	{
+		$q_string =     !is_array($q)      ?      'q='.urlencode($q)  	  :     'q='.implode("&q=", array_map('urlencode',$q) ); 
+		$res=$this->curl("https://www.googleapis.com/language/translate/v2?" .$q_string , ['target'=>$target, 'source'=>($source ?: "en"), 'key'=>($gtranslateApiKey ?: $this->gtranslateApiKey)]  );
+		$array= json_decode($res, true);
+		$transl_result = $array['data']['translations'];
 
+		// format data correctly 
+		$assoc=[];
+		if(is_array($q)){
+			if (count($q) != count($transl_result))
+			{
+				exit("error in translation pairs: ". print_r($q,true) . PHP_EOL . print_r($transl_result,true) );
+			}
+			for($i=0; $i < count($q); $i++)
+			{
+				$assoc[$q[$i]] = $value = $transl_result[$i]['translatedText']; 
+				$this->insert_translation($q[$i], $target, $value, time(), $this->programName, "");
+			}
+			return $assoc;
+		}
+		else{
+			$assoc[$q] =  $value =  $transl_result[0]['translatedText'];
+			$this->insert_translation($q, $target, $value, time(), $this->programName, "");
+			return $assoc;
+		}
+	}
+	#endregion ----TranslationsDB-----
+} // tempclass_translations
 
-}// if-clause
+}// if-class
