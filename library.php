@@ -5641,7 +5641,7 @@ class library
 	public function file_put_contents($path, $content, $third = null)
 	{
 		$dir = dirname($path);
-		if(!is_dir($dir))  $this->mkdir_recursive($dir);
+		if(!is_dir($dir))  $this->create_directory($dir);
 		$path = $this->realpath($path);  
 		$content = is_array($content) || is_object($content) ? json_encode($content) : $content; 
 		 // is_writable( $path ) doesn't work well, sometimes returns false when it can write
@@ -7120,12 +7120,12 @@ class tempclass_file {
 	}
 
 	//rmdir rmdir_recursive
-	public function delete_directory ($dirPath) {
+	public function delete_directory($dirPath) {
 		if(!empty($dirPath) && is_dir($dirPath) ){
 			$dir  = new \RecursiveDirectoryIterator($dirPath, \RecursiveDirectoryIterator::SKIP_DOTS); //upper dirs not included,otherwise DISASTER HAPPENS :)
 			$files = new \RecursiveIteratorIterator($dir, \RecursiveIteratorIterator::CHILD_FIRST);
 			foreach ($files as $path) $path->isDir() && !$path->isLink() ? $this->delete_directory($path->getPathname()) : unlink($path->getPathname()); //{if (is_file($path)) {unlink($path);} else {$empty_dirs[] = $path;} } if (!empty($empty_dirs)) {foreach ($empty_dirs as $eachDir) {rmdir($eachDir);}} 
-			$this->delete_directory($dirPath);
+			rmdir($dirPath);
 			return true;
 		}
 		return true;
@@ -7159,11 +7159,11 @@ class tempclass_file {
 	public function copy_recursive($source, $dest, $permissions = 0755){
 		if (is_link($source))	{ return symlink(readlink($source), $dest); }
 		elseif (is_file($source))	{ 
-			if(!file_exists(dirname($dest))){$this->mkdir_recursive(dirname($dest), $permissions, true); }
+			if(!file_exists(dirname($dest))){$this->create_directory(dirname($dest), $permissions, true); }
 			if(!copy($source, $dest)) {echo "not copied ($source ---> $dest )";} return true; 
 		}
 		elseif (is_dir($source))	{ 
-			$this->mkdir_recursive($dest, $permissions, true); 
+			$this->create_directory($dest, $permissions, true); 
 			foreach (glob($source.'/*') as $each){	$basen= basename($each);
 				if ($basen != '.' && $basen != '..') { $this->copy_recursive("$each", "$dest/$basen", $permissions);	}
 			}
