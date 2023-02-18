@@ -1,16 +1,16 @@
 <?php
 /**
- *   ####################################################################################
- *   ################################  Our PHP Library   ################################
- *   ####### Here we collect frequently used methods across our PHP applications. #######
- *   ####################################################################################
+ *   ################################################################################
+ *   ##############################  Our PHP Library   ##############################
+ *   ##### Here we collect frequently used methods across our PHP applications. #####
+ *   ################################################################################
  *
  *   ### Example usage: ###
  *         $helpers = new \Puvox\php_library();
  *         $helpers-> getVisitorIp ();
  *                 -> rmdirRecursive ('/path/to/dir');
  *                 -> redirect ('https://example.com');
- *                 -> jsonPretty (['key'=>'value']);
+ *                 -> json_pretty (['key'=>'value']);
  *                 -> cacheSet ('myKey', 'myValue'); 
  *                 -> cacheGet ('myKey');
  *                    ...
@@ -42,20 +42,22 @@ class library
 		return $this->privateAppName__; 
 	}
 	
-	public function constantX($val)           { return (defined($val) ? constant($val) : (!is_null($val) ? $val : false ) );}
+	public function constant($val)            { return (defined($val) ? constant($val) : (!is_null($val) ? $val : false ) );}
 	public function property($propertyName)   { return property_exists($this, $propertyName) ? $this->{$propertyName} : null; }
 	public function print_r($obj,$silent=true){ return print_r($obj, $silent); }
+
+	#region debug
 	public function v($obj){ 
 		echo '<pre>'; var_dump($obj); echo '</pre>'; 
 	}
 	public function vv($obj){
 		$out = '<pre>'; 
-		$content = $this->jsonPretty($obj); //print_r($obj, true);
+		$content = $this->json_pretty($obj); //print_r($obj, true);
 		$out .= htmlentities( $this->br2nl( $content )) ;  
 		try{ 	
 			$trace = debug_backtrace();
 			if ( isset($trace[1]) )
-				$out .= ($this->isCli() ? ' [' : '<span style="font-size:0.6em; margin:1px; padding:1px; background:pink;">') .$this->array_value( $trace[1],'file','').':'.$this->array_value( $trace[1],'line',''). ($this->isCli() ? '] ':'</span>'); 
+				$out .= ($this->is_cli() ? ' [' : '<span style="font-size:0.6em; margin:1px; padding:1px; background:pink;">') .$this->array_value( $trace[1],'file','').':'.$this->array_value( $trace[1],'line',''). ($this->is_cli() ? '] ':'</span>'); 
 		}
 		catch(\Exception $e){} 
 		$out .= '</pre>'; 
@@ -63,36 +65,16 @@ class library
 	} 
 	public function vx($obj){ $this->vv($obj); exit; }
 	public function var_dump($obj, $echo=true){ 
-		if (is_a($obj,'Exception')) $obj = $this->ExceptionMessage($obj);
+		if (is_a($obj,'Exception')) $obj = $this->exception_message($obj);
 		$out= $this->vv($obj) ; 
 		if ($echo) {echo $out."\n";} else return $out; 
 	}
 	public function var_dumpx($obj, $echo=true){ $this->var_dump($obj, $echo); exit; }
-	public function ExceptionMessage($ex, $extended=true){ 	return "Exception Message: {$ex->getMessage()} \r\n[{$ex->getTraceAsString()}] \r\n";	}  //[{$ex->getFile()}::{$ex->getLine()}]
+	public function exception_message($ex, $extended=true){ 	return "Exception Message: {$ex->getMessage()} \r\n[{$ex->getTraceAsString()}] \r\n";	}  //[{$ex->getFile()}::{$ex->getLine()}]
 	
-	public function br2nl($content) { return preg_replace('/\<br(\s*)?\/?\>/i', "\n", $content); }
-	public static function sleep($seconds){ 
-		if ( self::swoole_inside_coroutine() ) 
-			\Swoole\Coroutine\System::sleep($seconds); 
-		else {
-			if ( filter_var($seconds, FILTER_VALIDATE_INT) !== false)
-				sleep($seconds);
-			else
-				usleep($seconds*1000000);
-		} 
-	}
-	public function usleep($milliseconds){ if (self::swoole_inside_coroutine()) \Swoole\Coroutine\System::sleep($milliseconds/1000000); else usleep($milliseconds); }
-
-	public function force_https(){
-		if(!$this->is_https) {  header("Location: https://" . $this->domainReal . $_SERVER["REQUEST_URI"], true, 301); exit;  }
-	}
-	public function string_to_truefalse($string) { return ( $string ==='true' ? true : ($string ==='false' ? false : $string)); }
-	public function truefalse_to_string($string) { return ( $string === true ? 'true' : ($string ===false ? 'false' : $string)); }
-	public function bool_to_sign($string) { return ( $string===true ||  $string==="true" ? 1 : ( $string===false || $string==="false" ? -1 : 0) ); }
-
-	public function jsonPretty($array_or_txt, $reparse=false) {  
+	public function json_pretty($array_or_txt, $reparse=false) {  
 		if(is_string($array_or_txt)) { 
-			if ( $reparse && $this->is_JSON($array_or_txt)) 
+			if ($reparse && $this->is_JSON($array_or_txt)) 
 				return json_decode($array_or_txt, JSON_PRETTY_PRINT); 
 			return $array_or_txt;
 		}
@@ -120,27 +102,31 @@ class library
 	}
 	public static function uniqueId($args, $addition=''){ return md5(json_encode($args)."_$addition"); }
 
-	public function stripUnwantedTagsAndAttrs($html_str, $tags=null){
-		$xml = new DOMDocument();
-		libxml_use_internal_errors(true);
-		$allowed_tags = is_null($tags) ? ["html", "body", "b", "br", "em", "hr", "i", "li", "ol", "p", "s", "span", "table", "tr", "td", "u", "ul"] :'';
-		$allowed_attrs = ["class", "id", "style"];
-		if (!strlen($html_str)){return false;}
-		if ($xml->loadHTML($html_str, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD)){
-			foreach ($xml->getElementsByTagName("*") as $tag){
-				if (!in_array($tag->tagName, $allowed_tags)){
-					$tag->parentNode->removeChild($tag);
-				}else{
-					foreach ($tag->attributes as $attr){
-						if (!in_array($attr->nodeName, $allowed_attrs)){
-							$tag->removeAttribute($attr->nodeName);
-						}
-					}
-				}
-			}
-		}
-		return $xml->saveHTML();
+	#endregion
+
+
+	public static function sleep($seconds){ 
+		if ( self::swoole_inside_coroutine() ) 
+			\Swoole\Coroutine\System::sleep($seconds); 
+		else {
+			if ( filter_var($seconds, FILTER_VALIDATE_INT) !== false)
+				sleep($seconds);
+			else
+				usleep($seconds*1000000);
+		} 
 	}
+	public function usleep($milliseconds){ if (self::swoole_inside_coroutine()) \Swoole\Coroutine\System::sleep($milliseconds/1000000); else usleep($milliseconds); }
+
+	public function force_https(){
+		if(!$this->is_https) {  header("Location: https://" . $this->domainReal . $_SERVER["REQUEST_URI"], true, 301); exit;  }
+	}
+	public static function current_url_contains($phrase, $case_sens=true){
+		return self::contains($_SERVER['REQUEST_URI'], $phrase, $case_sens);
+	}
+
+	public function string_to_truefalse($string) { return ( $string ==='true' ? true : ($string ==='false' ? false : $string)); }
+	public function truefalse_to_string($string) { return ( $string === true ? 'true' : ($string ===false ? 'false' : $string)); }
+	public function bool_to_sign($string) { return ( $string===true ||  $string==="true" ? 1 : ( $string===false || $string==="false" ? -1 : 0) ); }
 
 
 	public function get_visitor_ip() {
@@ -162,8 +148,6 @@ class library
 
 	public function mail_scrambler($email) {  return str_replace('@', '&#64;', $email);}
 
-
-
 	public function expire_headers()
 	{
 		ini_set('session.cookie_httponly', 1);		
@@ -178,10 +162,6 @@ class library
 		ini_set("xdebug.var_display_max_children", '-1');
 		ini_set("xdebug.var_display_max_data", '10000');
 		ini_set("xdebug.var_display_max_depth", '-1');
-	}
-
-	public static function currentUrlContains($phrase,$case_sens=true){
-		return self::contains($_SERVER['REQUEST_URI'], $phrase, $case_sens);
 	}
 
 	public function change_max_upload_post()
@@ -218,13 +198,6 @@ class library
 		echo "\r\n";
 	}	
 
-	public function microtime_float()
-	{
-		list($usec, $sec) = explode(" ", microtime());
-		return ((float)$usec + (float)$sec);
-	}
-	public function microtime()	{ return $this->microtime_float();	}
-
 	//only for explicit call
 	public function test_load_times_1(callable $func1, $iterations=1000)
 	{
@@ -234,22 +207,85 @@ class library
 	}
 	#endregion
 
-	//  if ( is_admin() && file_exists($lib_start=__DIR__."/$name") && !defined("_puvox_machine_") ) { rename($lib_start, $lib_final); } require_once($lib_final);
 
+
+	#region url/path helpers
+	public function br2nl($content) { return preg_replace('/\<br(\s*)?\/?\>/i', "\n", $content); }
+
+	public function strip_tags_and_attrs($html_str, $tags=null){
+		$xml = new DOMDocument();
+		libxml_use_internal_errors(true);
+		$allowed_tags = is_null($tags) ? ["html", "body", "b", "br", "em", "hr", "i", "li", "ol", "p", "s", "span", "table", "tr", "td", "u", "ul"] :'';
+		$allowed_attrs = ["class", "id", "style"];
+		if (!strlen($html_str)){return false;}
+		if ($xml->loadHTML($html_str, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD)){
+			foreach ($xml->getElementsByTagName("*") as $tag){
+				if (!in_array($tag->tagName, $allowed_tags)){
+					$tag->parentNode->removeChild($tag);
+				}else{
+					foreach ($tag->attributes as $attr){
+						if (!in_array($attr->nodeName, $allowed_attrs)){
+							$tag->removeAttribute($attr->nodeName);
+						}
+					}
+				}
+			}
+		}
+		return $xml->saveHTML();
+	}
+
+	public function remove_www($url) 	{ 
+		return str_replace( ['://www.'], '://', $url ); 
+	}
+	public function remove_https_www($url){
+		return str_replace( ['https://www.','http://www.','http://','https://'], '', $url ); 
+	}
+	public function replace_slashes_forward($url, $add_trailing_slash=true){ 
+		return $this->remove_double_slashes ( str_replace(['\\','/'], '/', $url) );
+	}
+	public function replace_slashes_backward($url, $add_trailing_slash=true){ 
+		return $this->remove_double_slashes ( str_replace(['\\','/'], '\\', $url) );
+	}
+	public function normalize_with_slashes($url, $add_trailing_slash=true){ 
+		return rtrim( $this->replace_double_slashes($url), '/')  . ($add_trailing_slash ? '/' : '') ; 
+	}
+	public function directory_separatored($path){
+		return str_replace(array('/','\\'), DIRECTORY_SEPARATOR, $path); 
+	}
+	public function replace_double_slashes($url){
+		$prefix='';
+		if(substr($url,0,2)=='//'){
+			$prefix = '//';
+			$url=substr($url,2);
+		}
+		return $prefix . preg_replace( '/([^:])\/\//',  '$1/', $url);
+	}
+	public function remove_double_slashes($input){
+		$isSchemed = stripos($input, '://') !==false;
+		$input=str_replace('//','/', $input);  $input=str_replace('\\\\','\\', $input);  return ($isSchemed ? str_replace(':/','://', $input) : $input);
+	}
+	public function replace_slashes($path){
+		return 	str_replace( ['/','\\',DIRECTORY_SEPARATOR], '/', $path); 
+	}
+	public function remove_extra_slashes($path){
+		return 	str_replace( '//', '/', $path); 
+	}
+	public function urlify($path){
+		return str_replace( '\\', "/", $path); 
+	}
+	public function remove_http_www($url){
+		return preg_replace('/http(s|):\/\/(www.|)/i', '',  $url);
+	}
+	public function get_domain_from_url($url){
+		return preg_replace('/http(s|):\/\/(www.|)(.*?)(\/.*|$)/i', '$3', $url);
+	}
+	public function remove_domain_from_url($url){
+		return str_replace( $this->add_http_www($this->domainReal), '', $this->add_http_www($url) );
+	}
 	public function convert_urls_in_text($text) {
 		return preg_replace('@([^\"\']https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#][^<]*(\?\S+)?)?)?)@', '<a href="$1">$1</a>', $text);
 	}
-
-	public function randomString($length = 11) {
-		return substr(str_shuffle(str_repeat($x='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', ceil($length/strlen($x)) )),1, $length);    //random_stringg($length= 15){ return substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, $length);}
-	}
-
-	public function PlainString(&$text1=false,&$text2=false,&$text3=false,&$text4=false,&$text5=false,&$text6=false,&$text7=false,&$text8=false){
-		for($i=1; $i<=8; $i++){    if(${'text'.$i}) {${'text'.$i} = preg_replace('/\W/si','',${'text'.$i});} 	}
-		return $text1;
-	}
-
-	public function adjustedUrlPrefixes($url){
+	public function add_http_www($url){
 		if(strpos($url, '://') !== false){
 			return preg_replace('/^(http(s|)|):\/\/(www.|)/i', 'https://www.', $url);
 		}
@@ -257,122 +293,48 @@ class library
 			return 'https://www.'.$url;
 		}
 	}
-
-	public function remove_www($url) 	{ 
-		return str_replace( ['://www.'], '://', $url ); 
-	}
-
-	public function remove_https_www($url){
-		return str_replace( ['https://www.','http://www.','http://','https://'], '', $url ); 
-	}
-
-	public function slashesForward($url, $add_trailing_slash=true){ 
-		return $this->remove_double_slashes ( str_replace(['\\','/'], '/', $url) );
-	}
-	
-	public function slashesBackward($url, $add_trailing_slash=true){ 
-		return $this->remove_double_slashes ( str_replace(['\\','/'], '\\', $url) );
-	}
-	
-	public function normalize_with_slashes($url, $add_trailing_slash=true){ 
-		return rtrim( $this->OneSlash($url), '/')  . ($add_trailing_slash ? '/' : '') ; 
-	}
-
-	public function OneSlash($url){
-		$prefix='';
-		if(substr($url,0,2)=='//'){
-			$prefix = '//';
-			$url=substr($url,2);
-		}
-		return $prefix.preg_replace( '/([^:])\/\//',  '$1/', $url);
-	}
-	
-	//function to replace double-slashes with one slashes
-	public function remove_double_slashes($input){
-		$isSchemed = stripos($input, '://') !==false;
-		$input=str_replace('//','/', $input);  $input=str_replace('\\\\','\\', $input);  return ($isSchemed ? str_replace(':/','://', $input) : $input);
-	}
-	
-	public function replace_slashes($path){
-		return 	str_replace( ['/','\\',DIRECTORY_SEPARATOR], '/', $path); 
-	}
-	public function remove_extra_slashes($path){
-		return 	str_replace( '//', '/', $path); 
-	}
-	
-	public function urlify($path){
-		return str_replace( '\\', "/", $path); 
-	}
-	public function IsRestirctedDirecotryRequested($url=false, $dieORreturn=true ){ if (!$url) {$url=$_SERVER['REQUEST_URI'];}
+	public function restricted_directory_requested($url=false, $dieORreturn=true ){ if (!$url) {$url=$_SERVER['REQUEST_URI'];}
 		$url =stripslashes($url);
-		if (  stristr($url,'\\')  ||   substr($url, 0, 2)=='..' || stristr($url,'../')  ||  stristr($url,'/..')  ||  stristr($url,'?')  ||  stristr($url,'*')  ||  stristr($url,'.php')	){
+		if ( stristr($url,'\\')  ||   substr($url, 0, 2)=='..' || stristr($url,'../')  ||  stristr($url,'/..')  ||  stristr($url,'?')  ||  stristr($url,'*')  ||  stristr($url,'.php')	){
 			if ($dieORreturn) {die("incorrect path requested.. error4292");} 	else{ return true;}
 		}
 	}
-
-	public function directory_separatored($path){
-		return str_replace(array('/','\\'),DIRECTORY_SEPARATOR, $path); 
+	public function stripslashes_from_strings_only( $value ) {
+		return is_string( $value ) ? stripslashes( $value ) : $value;	
+	}
+	public function stripslashes_deep($value)
+	{
+		$value = is_array($value) ? array_map('stripslashes_deep', $value) : stripslashes($value);
+		return $value;
+	}
+	
+	public function stripslashes_deep2($value){ 
+		return $this->array_map_deep([$this,'stripslashes_from_strings_only'] , $value ); 
 	}
 
-	// https://www.php.net/manual/en/function.realpath.php
+	// minified version of https://www.php.net/manual/en/function.realpath.php#124254
 	public static function realpath($path){
-        // Cleaning path regarding OS
         $path = mb_ereg_replace('\\\\|/', DIRECTORY_SEPARATOR, $path, 'msr');
-        // Check if path start with a separator (UNIX)
         $startWithSeparator = $path[0] === DIRECTORY_SEPARATOR;
-        // Check if start with drive letter
         preg_match('/^[a-z]:/', $path, $matches);
         $startWithLetterDir = isset($matches[0]) ? $matches[0] : false;
-        // Get and filter empty sub paths
         $subPaths = array_filter(explode(DIRECTORY_SEPARATOR, $path), 'mb_strlen');
-
         $absolutes = [];
         foreach ($subPaths as $subPath) {
-            if ('.' === $subPath) {
-                continue;
-            }
-            // if $startWithSeparator is false
-            // and $startWithLetterDir
-            // and (absolutes is empty or all previous values are ..)
-            // save absolute cause that's a relative and we can't deal with that and just forget that we want go up
-            if ('..' === $subPath
-                && !$startWithSeparator
-                && !$startWithLetterDir
-                && empty(array_filter($absolutes, function ($value) { return !('..' === $value); }))
-            ) {
-                $absolutes[] = $subPath;
-                continue;
-            }
-            if ('..' === $subPath) {
-                array_pop($absolutes);
-                continue;
-            }
+            if ('.' === $subPath) { continue;  }
+            if ('..' === $subPath && !$startWithSeparator && !$startWithLetterDir && empty(array_filter($absolutes, function ($value) { return !('..' === $value); })) ) { $absolutes[] = $subPath;  continue; }
+            if ('..' === $subPath) { array_pop($absolutes); continue; }
             $absolutes[] = $subPath;
         }
-
-        return
-            (($startWithSeparator ? DIRECTORY_SEPARATOR : $startWithLetterDir) ?
-                $startWithLetterDir.DIRECTORY_SEPARATOR : ''
-            ).implode(DIRECTORY_SEPARATOR, $absolutes);
+        return (($startWithSeparator ? DIRECTORY_SEPARATOR : $startWithLetterDir) ? $startWithLetterDir.DIRECTORY_SEPARATOR : '' ).implode(DIRECTORY_SEPARATOR, $absolutes);
 	}
+	#endregion
 
-
-
-
-
-
-	public function stripUrlPrefixes($url){
-		return preg_replace('/http(s|):\/\/(www.|)/i', '',  $url);
-	}
-
-	public function getDomain($url){
-		return preg_replace('/http(s|):\/\/(www.|)(.*?)(\/.*|$)/i', '$3', $url);
-	}
-
-	public function stripDomain($url){
-		return str_replace( $this->adjustedUrlPrefixes($this->domainReal), '', $this->adjustedUrlPrefixes($url) );
-	}
-
+ 
+	#region string manipulations 2
+	public function random_string($length = 11) {
+		return substr(str_shuffle(str_repeat($x='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', ceil($length/strlen($x)) )),1, $length);    //random_stringg($length= 15){ return substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, $length);}
+	} 
 	// i.e. 5m, 1H, 2H, 1D, 240M, etc...
 	public function stockTF_to_seconds($string, $minuteSymbol="m", $monthSymbol="M"){
 		$res=$string;
@@ -381,8 +343,6 @@ class library
 		return $res;
 	}
 	
- 
-
 	public function str_replace_last($search, $replace, $subject)
 	{
 		$pos = strrpos($subject, $search);
@@ -404,36 +364,50 @@ class library
 		}
 	}
 	
-	public static function timeMS(){ return self::milliseconds(); }
-	public static function milliseconds(){ return round(microtime(true)*1000); }
+	public static function toString($inp){ return self::to_string($inp); }
+	public static function to_string($inp){ return $inp.""; }
 	
-	public function toString($inp){
-		return $inp."";
+	public function value_to_string( $value ){
+		return is_bool($value) ? ($value ? 'true' : 'false' ) : strip_tags(  $value ) ;
 	}
-	public function contains_numeric($str){
-		$str=$this->toString($str);
+	public function string_to_value( $value ){
+		return is_bool($value) ? $value : ( !is_string($value) ?  $value : ( $value =='true' ? true : (  $value =='false' ? false : $value) ) );
+	}
+	public static function contains_numeric($str){
+		$str = self::to_string($str);
 		for($i=0; $i<=9; $i++) {
-			if (strpos($str, $this->toString($i) )!==false){
+			if (strpos($str, self::to_string($i) )!==false){
 				return true;
 			}
 		}
 		return false;
 	}
+	#endregion
+
+	#region date and time
+	public function microtime_float()
+	{
+		list($usec, $sec) = explode(" ", microtime());
+		return ((float)$usec + (float)$sec);
+	}
+	public function microtime()	{ return $this->microtime_float();	}
+
+	//  if ( is_admin() && file_exists($lib_start=__DIR__."/$name") && !defined("_puvox_machine_") ) { rename($lib_start, $lib_final); } require_once($lib_final);
+	public static function seconds(){ return time(); }
+	public static function milliseconds(){ return round(microtime(true)*1000); }
+	public static function time_ms(){ return self::milliseconds(); }
 	
-	public function dayForTime($time){
+	public static function yyyymmdd($time){
 		return strtotime(date('Y-m-d', $time));
 	}
-	public function currentDatetime($time='', $MS=false){
+	public static function current_datetime($time='', $MS=false){
 		$format = 'Y-m-d H:i:s'.($MS?'.v':'') ;
 		return ( !empty($time) ? gmdate($format, $time) : gmdate($format) );
-	}
-	public static function timeToDate($time, $ms=000){
-		return self::time_to_date($time, $ms=000);
 	}
 	public static function time_to_date($time, $ms=000){
 		return date("Y-m-d H:i:s.$ms", $time);
 	}
-	public static function timeToDateTZ($time){
+	public static function time_to_date_TZ($time){
 		$time_rounded = floor($time);
 		// if milliseconds
 		if ($time_rounded>1000000000000){
@@ -446,10 +420,12 @@ class library
 		}
 		return $dat;
 	}
-	
-	public function isWeekend($time){
+	public function is_weekend($time){
 		return date('N',$time) > 5;
 	}
+	#endregion
+
+
 
 	public static function safemode_basedir_set(){
 		return ( ini_get('open_basedir') || ini_get('safe_mode') ) ;
@@ -562,7 +538,7 @@ class library
 		return in_array($target,self::binding_flags($existing));//$target & (1 << $target);
 	}
 
-	public function MessageAgainstMaliciousAttempt(){
+	public function message_stop_malicious_attempt(){
 		return 'Not allowed. Try again.';//'Well... I know that these words won\'t change you, but I\'ll do it again: Developers try to create a balance & harmony in internet, and some people like you try to steal things from other people. Even if you can it, please don\'t do that.';
 	}
 
@@ -623,7 +599,7 @@ class library
 
 
 
-	// ########################### SQLITE ###########################
+	#region ########################### SQLITE ###########################
 	//  $db = new \PDO('sqlite:'.$db_path);  $db ->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); 
 	public function sqlite_db_init($db_path="/example/my.db"){
 		try {
@@ -682,7 +658,7 @@ class library
         return $res;
     }
 	
-    public function pdoCommand($db_name="db_all.db") { 
+    public function sqlitePDO_Command($db_name="db_all.db") { 
         $this->pdo	= $this->sqlite_db_init($db_name);
         $statement->execute(); 
         $res = $statement->fetchAll(PDO::FETCH_ASSOC);
@@ -732,11 +708,11 @@ class library
 	}
 		//$current_day_logname = 'log_'.date('Y-m-d'). ($new_file ? time().$new_file : '') . '.txt'; 
 		//$this->helpers->filecreate($current_day_logname,$data, FILE_APPEND); 
-	// ########################### END SQLITE ###########################
+	#endregion ########################### END SQLITE ###########################
 	
 	
 
-	// DOM PARSER
+	#region DOM PARSER
 	public function new_dom_document($content)
 	{
 		$dom = new \DOMDocument('1.0', 'UTF-8');
@@ -752,7 +728,6 @@ class library
 			}
 		}
 	}
-	
 	public function domDocument_load($content)
 	{
 		if (!property_exists($this,'tempDom')) $this->tempDom = new \DOMDocument('1.0', 'UTF-8');
@@ -774,8 +749,6 @@ class library
 		}
 		return "-1";
 	}
-
-	
 	public function domDocument_getElementById($dom, $idName, $showError=false) {
 		try{
 			return $dom->getElementById($idName)->nodeValue;
@@ -784,7 +757,6 @@ class library
 			return ($showError ? "DomError:".$ex->getMessage() : null);
 		}
 	}
-
 	public function domDocument_getElementsByClassName($dom, $ClassName, $tagName=null) {
 		$Elements = $tagName ? $dom->getElementsByTagName($tagName) : $dom->getElementsByTagName("*");
 		$Matched = array();
@@ -809,8 +781,6 @@ class library
 
 		return $nodes;
 	}
-
-
 	public function get_dom_element_data($html_data, $tag_type='id', $tag_key='')
 	{
         $dom = new \DOMDocument('1.0', 'UTF-8');;  
@@ -827,94 +797,19 @@ class library
 			return $data;
 		}
 	}
-	// ========================
+	#endregion ======================== domparser ========================
 
-	
+
+
 	public function include_dir($dir){ 
 		foreach(glob($dir ."/*.php$") as $file) include_once($file);
 	}
 
-
-	public function filesContents($files=[], $inModule=true){ 
-		$cont = '';
-		foreach($files as $file){
-			$cont .= $this->file_get_contents( ($inModule? $this->moduleDIR : '').$file);
-		}
-		return $cont;
-	}
-
-	// files collection
-	public function globFiles($glob_pattern, $first='', $last='')
-	{
-		$files = glob($glob_pattern);
-		$new_files =$files;
-		$first_file='';
-		$last_file ='';
-		foreach($files as $file)
-		{
-			if( !empty($first) && strpos($file, $first)!==false ) {
-				$first_file = $file;
-				$new_files=array_diff( $new_files, [$file] );
-			}
-			if( !empty($last)  && strpos($file, $last) !==false ) {
-				$last_file = $file;
-				$new_files=array_diff( $new_files, [$file] );
-			}
-		}
-		if( !empty($first_file) ) array_unshift($new_files, $first_file);
-		if( !empty($last_file) ) array_push($new_files, $last_file);
-		return $new_files;
-	}
-
-	public function fileUrl($file){ 
+	public function file_url($file){ 
 		return $this->moduleURL."/$file?vers_=".$this->filedate($this->moduleDIR. "/$file");
 	}
 
-	public function FullIframeScript(){ ?>
-		<script>
-		function MakeIframeFullHeight_tt(iframeElement, cycling, overwrite_margin){
-			cycling= cycling || false;
-			overwrite_margin= overwrite_margin || false;
-			iframeElement.style.width	= "100%";
-			var ifrD = iframeElement.contentDocument || iframeElement.contentWindow.document;
-			var mHeight = parseInt( window.getComputedStyle( ifrD.documentElement).height );  // Math.max( ifrD.body.scrollHeight, .. offsetHeight, ....clientHeight,
-			var margins = ifrD.body.style.margin + ifrD.body.style.padding + ifrD.documentElement.style.margin + ifrD.documentElement.style.padding;
-			if(margins=="") { margins=0; if(overwrite_margin) {  ifrD.body.style.margin="0px"; } }
-			(function(){
-				var interval = setInterval(function(){
-				if(ifrD.readyState  == 'complete' ){
-					setTimeout( function(){
-						if(!cycling) { setTimeout( function(){ clearInterval(interval);}, 500); }
-						iframeElement.style.height	= (parseInt(window.getComputedStyle( ifrD.documentElement).height) + parseInt(margins)+1) +"px";
-					}, 200 );
-				}
-				},200)
-			})();
-				//var funcname= arguments.callee.name;
-				//window.setTimeout( function(){ console.log(funcname); console.log(cycling); window[funcname](iframeElement, cycling); }, 500 );
-		}
-		</script>
-		<?php
-	}
-
-
-
-
-	public function stripslashes_from_strings_only( $value ) {
-		return is_string( $value ) ? stripslashes( $value ) : $value;	
-	}
-	public function stripslashes_deep($value)
-	{
-		$value = is_array($value) ? array_map('stripslashes_deep', $value) : stripslashes($value);
-		return $value;
-	}
-	
-	public function stripslashes_deep2($value){ 
-		return $this->array_map_deep([$this,'stripslashes_from_strings_only'] , $value ); 
-	}
-
-	
-    public function childrenCheckboxed($array, $keyname, $post_array=null)
+    public function checked_children($array, $keyname, $post_array=null)
     {
 		$ref_Array= !is_null($post_array) ? $post_array : $array;
         foreach ($array as $key=>$name)
@@ -924,8 +819,6 @@ class library
         return $array;
     }
 	// ================================================
-
-
 
 
 
@@ -940,10 +833,10 @@ class library
 		$this->session_state($id);
 	}
 	
-	public function startSessionIfNotStarted(){
+	public function start_session_if_was_not_started(){
 		if(session_status() == PHP_SESSION_NONE)  { $this->session_being_opened = true; session_start();  }
 	}
-	public function endSessionIfWasStarted( $method=2){
+	public function end_session_if_was_started( $method=2){
 		if(session_status() != PHP_SESSION_NONE && property_exists($this,"session_being_opened") )  {
 			unset($this->session_being_opened);
 			if($method==1) session_destroy();
@@ -1069,21 +962,12 @@ class library
 	}
 
 
-	public function array_keys($arrayOrObject){
-		if(is_array($arrayOrObject))
-			return array_keys($arrayOrObject);
-		elseif (is_object($arrayOrObject))
-			return array_keys(get_object_vars($arrayOrObject));
-		return [];
-	}
-
 	public static function count($arr_or_object)
 	{
 		if(is_object($arr_or_object)) return count(get_object_vars( $arr_or_object ));
 		else return count($arr_or_object);
 	}
-
-	public static function childValue($array, $key, $default=''){
+	public static function child_value($array, $key, $default=''){
 		if (is_object($array)) {
 			return (property_exists($array, $key) ? $array->$key : $default);
 		}
@@ -1091,16 +975,12 @@ class library
 			return (array_key_exists($key, $array) ? $array[$key] : $default);
 		}
 	}
+	public static function array_value_safe($array, $key, $default=''){
+		return self::child_value($array ?:[], $key, $default);
+	}
 	public static function array_value($array, $key, $default=''){
-		return self::childValue($array, $key, $default);
+		return self::array_value_safe ($array, $key, $default);
 	}
-	public static function arrayValue($array, $key, $default=''){
-		return self::arrayValueSafe($array, $key, $default);
-	}
-	public static function arrayValueSafe($array, $key, $default=''){
-		return self::childValue( $array ?:[], $key, $default);
-	}
-
 	public function array_value_sub($array, $key1, $key2, $default=''){
 		if (is_object($array)) {
 			return ( !property_exists($array, $key1) || !property_exists($array->$key1, $key2) ) ? $default : $array->$key1->$key2;
@@ -1110,12 +990,8 @@ class library
 		}
 	}
 
-	public static function in_array($needle, $haystack) {
-		return in_array($needle, self::array_values($haystack) );
-	}
-
-	public static function in_arrayi($needle, $haystack) {
-		return in_array(strtolower($needle), array_map('strtolower', $haystack));
+	public static function in_array($needle, $haystack, $case_sensitive=true) {
+		return ( $case_sensitive ? in_array($needle, self::array_values($haystack)) : in_array(strtolower($needle), array_map('strtolower', $haystack)) );
 	}
 
 	public static function array_values($array_or_object){
@@ -1133,13 +1009,6 @@ class library
 
 	public static function arrayize($val) {
 		return self::is_array($val) ? $val : [$val];
-	}
-	public function valueIs($array, $key, $value){
-		return $this->array_value($array, $key)===$value;
-	}
-	public function valueSetDefault(&$array, $key, $value){
-		if ( ! array_key_exists($key, $array) ) $array[$key]==$value;
-		return $array;
 	}
 	// i.e. array_child (['a'=>['b'=>'c']], ['a','b']) will return 'c'
 	
@@ -1503,23 +1372,23 @@ class library
 		return is_array($data) || is_object($data);
 	}
 
-	public function arrayKeyRename($array, $keyToRemove, $keyToAdd){
-		if (array_key_exists($keyToRemove,$array)) 
+	public function array_key_rename($array, $oldKeyToBeRenamed, $newKeyToBeUsed){
+		if (array_key_exists($oldKeyToBeRenamed,$array)) 
 		{
-			$array[$keyToAdd]=$array[$keyToRemove];
-			unset($array[$keyToRemove]);
+			$array[$newKeyToBeUsed]=$array[$oldKeyToBeRenamed];
+			unset($array[$oldKeyToBeRenamed]);
 		}
 		return $array;
 	}
 	
-	public function arrayKeyRenameRecursive($array, $keyToRemove, $keyToAdd){
-		$array = $this->arrayKeyRename($array, $keyToRemove, $keyToAdd);
+	public function array_key_rename_recursive($array, $keyToRemove, $keyToAdd){
+		$array = $this->array_key_rename($array, $keyToRemove, $keyToAdd);
 		$new_array =[];
 		if (is_array($array))
 		{
 			foreach($array as $key=>$value)
 			{
-				$new_array[$key]= !is_array($value) ? $value : $this->arrayKeyRenameRecursive($value, $keyToRemove, $keyToAdd);
+				$new_array[$key]= !is_array($value) ? $value : $this->array_key_rename_recursive($value, $keyToRemove, $keyToAdd);
 			}
 		}
 		else{
@@ -1528,34 +1397,31 @@ class library
 		return $new_array;
 	}
 	
-	//another : https://stackoverflow.com/a/49993735/2377343
-	public function arrayChangeKeyCaseRecursive(&$arr, $case = CASE_LOWER)
-	{
-		return array_map(function($item) use($case) {
-			if(is_array($item))
-				$item = $this->arrayChangeKeyCaseRecursive($item, $case);
-			return $item;
-		}, array_change_key_case($arr, $case));
-	}
-	public function arrayKeyLowercase(&$arr, $case = CASE_LOWER)
+	public function array_change_key_case(&$arr, $case = CASE_LOWER)
 	{
 		$arr = array_change_key_case($arr, $case);
 		$arr = array_map(function(&$item) use($case) {
 			if(is_array($item))
-				$this->arrayKeyLowercase($item, $case);
+				$this->array_change_key_case($item, $case);
 			return $item;
 		}, $arr );
 	}
-	
-	public static function itemKeys($element) {
-		return is_object($element) ? self::objectKeys($element) : self::objectKeys($element);
+	//another : https://stackoverflow.com/a/49993735/2377343
+	public function array_change_key_case_recursive(&$arr, $case = CASE_LOWER)
+	{
+		return array_map(function($item) use($case) {
+			if(is_array($item))
+				$item = $this->array_change_key_case_recursive($item, $case);
+			return $item;
+		}, array_change_key_case($arr, $case));
 	}
-    public static function hasChildWithKeyValue ($element, $targetKey, $targetValue) {
-        $keys = self::itemKeys ($element);
+	
+    public static function has_child_with_key_value ($element, $targetKey, $targetValue) {
+        $keys = self::keys ($element);
         for ($i = 0; $i < count($keys); $i++) {
             $currentKey = $keys[$i];
             $childMember = $element[$currentKey];
-            $value = self::memberValue ($childMember, $targetKey, null);
+            $value = self::array_value ($childMember, $targetKey, null);
             if ($value === $target_keytargetValue) {
                 return true;
             }
@@ -1563,7 +1429,7 @@ class library
         return false;
     }
 
-	public function insertValueAtPosition($arr, $insertedArray, $position) {
+	public function insert_value_at_position($arr, $insertedArray, $position) {
 		$i = 0;
 		$new_array=[];
 		foreach ($arr as $key => $value) {
@@ -1703,18 +1569,6 @@ class library
 	}
 	///////////////
 
-
-	public function non_empty_arrayyyy($x=array()){ if (!is_array($x) || empty($x) || (is_array($x) && count($x)==1 && $x[0]==null)  ){ return array('');} else return $x; }
-
-	public function arrayKeyEquals($array, $key, $value)
-	{
-		return (is_array($array) && array_key_exists($key, $array) && $array[$key]==$value); //(!empty($array)
-	}
-	public function arrayKeyValue($array, $key, $value)
-	{
-		return ( is_array($array) && array_key_exists($key, $array) ? $array[$key] : $value);
-	}
-	
 	public static function array_part($array, $amount, $from="start|end")
 	{
 		return self::array_trim($array, $amount, $from);
@@ -1726,7 +1580,7 @@ class library
 	}
 
 	//add only in case the array didnt containted it already
-	public function Add_in_array_if_not_already_added($my_arrayy,$target_value){
+	public function add_in_array_if_not_already_added($my_arrayy,$target_value){
 		if (array_search($target_value, $my_arrayy) !== true) {	$my_arrayy[] = $target_value;}			return $my_arrayy;
 	}
 
@@ -1751,7 +1605,7 @@ class library
 		return count(array_filter(array_keys($array), 'is_string')) > 0;
 	}
 	
-	public function isAssociative(array $arr){
+	public function is_associative(array $arr){
 		if (array() === $arr) return false;
 		return array_keys($arr) !== range(0, count($arr) - 1);
 	}
@@ -1763,13 +1617,13 @@ class library
 		return [];
 	}
 
-	public function nextKeyInArray($target_keyname, $array){
+	public function next_key_in_array($target_keyname, $array){
 		$keys = array_keys($array);
 		$index_of_target_keyname = array_search($target_keyname,  $keys , true);
 		return (count($array) > $index_of_target_keyname+1 ) ? $keys[$index_of_target_keyname+1]  :  $keys[0];
 	}
 
-	public function nextValueInArray($target_value, $array, $by_key=false){
+	public function next_value_in_array($target_value, $array, $by_key=false){
 		$keys = array_keys($array);
 		$target_keyname = $by_key ? $target_value : array_search($target_value,  $array, true );
 		$index_of_target_keyname = array_search($target_keyname,  $keys, true );
@@ -1784,11 +1638,7 @@ class library
 		return false;
 	}
 
-	
-	public function stringContainsArrayValues($string, $array, $case_sensitive=false){
-		return $this->stringContainsArrayValueAny($string, $array, $case_sensitive);		
-	}
-	public function stringContainsArrayValueAny($string, $array, $case_sensitive=false){
+	public function string_contains_array_value_any($string, $array, $case_sensitive=false){
 		$found='';
 		$string = $case_sensitive ? $string : strtolower($string);
 		$array = $case_sensitive ? $array : array_map('strtolower', $array);
@@ -1800,7 +1650,7 @@ class library
 		}
 		return $found;
 	}
-	public function stringContainsArrayValueAll($string, $array, $case_sensitive=false){
+	public function string_contains_array_value_all($string, $array, $case_sensitive=false){
 		$result=true;
 		$string = $case_sensitive ? $string : strtolower($string);
 		$array  = $case_sensitive ? $array  : array_map('strtolower', $array);
@@ -1812,8 +1662,7 @@ class library
 		}
 		return $result;
 	}
-	
-	public function arrayValuesContainString($array, $string, $case_sensitive=false){
+	public function array_values_contain_string($array, $string, $case_sensitive=false){
 		$found=false;
 		$string = $case_sensitive ? $string : strtolower($string);
 		foreach($array as $each)
@@ -1826,50 +1675,53 @@ class library
 		return $found;
 	}
 
-	public static function arrayKeys($array)   { return array_keys($array); }
-	public static function objectKeys($object) { return get_object_vars($object); }
-
-	public static function arrayKeyAt($array, $position) { return self::arrayKeys($array)[$position]; }
-	public static function objectKeyAt($object, $position) { return self::objectKeys($object)[$position]; }
-
-	public static function arrayMemberAt($array, $whichNum){
-		$target_key = self::arrayKeyAt($array, $whichNum);
-		return self::childValue($array, $target_key, null);
+	public static function keys($array_or_object){
+		if(is_array($array_or_object))
+			return array_keys($array_or_object);
+		//elseif (is_object($arrayOrObject))
+			return array_keys(get_object_vars($array_or_object));
+		//return [];
 	}
-	public static function objectMemberAt($object, $whichNum){
-		$target_key = self::objectKeyAt($object, $whichNum);
-		return self::childValue($object, $target_key, null);
+	public static function key_at_index($array_or_object, $position){
+		return self::keys($array_or_object)[$position];
 	}
-
-	public function array_members($array, $from_start=0, $from_end=0){
+	public static function value_at_index($array_or_object, $position){
+		$target_key = self::key_at_index($array_or_object, $position);
+		if ($target_key === $position) {
+			return $array_or_object[$position];
+		}
+		else {
+			return self::array_value($array_or_object, $target_key, null);
+		}
+	}
+	public function index_of_key($array, $key){
+		return array_search($key, array_keys($array));
+	}
+	public function index_of_value($array, $value){
+		return array_search($value, $array);
+	}
+	public function array_get_part($array, $from_start=0, $from_end=0){
 		$i=0;
 		$new_arr=[];
 		$count = count($array);
 		foreach($array as $key=>$value)
 		{
 			$i++;
-			if ($i<= $from_start )
-				$new_arr[$key]=$value;
-			if ($i> $count-$from_end )
-				$new_arr[$key]=$value;
+			if ($i<= $from_start ) $new_arr[$key]=$value;
+			if ($i> $count-$from_end ) $new_arr[$key]=$value;
 		}
 		return $new_arr;
 	}
 
-	public function getIndexOfKey($array, $key){
-		return array_search($key, array_keys($array) );
-	}
-	public function getIndexOfValue($array, $key){
-		return array_search($key, $array );
-	}
-
-	public function getMemberByIndex($array, $idx){
-		$keys= array_keys($array);
-		return (!empty($keys) && !empty($array[$keys[$idx]])) ? $array[$keys[$idx]] : null ;
+	public static function value_at_last_index( $array )
+	{
+		$keys = self::keys($array);
+		$key_last = $keys[ count($keys)-1];
+		return self::array_value($array, $key_last, null);
 	}
 
-	public function resortArrayByKey($array, $key, $remove_current= false){
-		$remaining =  array_splice ($array, $this->getIndexOfKey($array, $key)   );
+	public function array_sort_by_key($array, $key, $remove_current= false){
+		$remaining =  array_splice ($array, $this->index_of_key($array, $key));
 		if($remove_current){
 			$array[$key]= $remaining[$key];
 			unset($remaining[$key] );
@@ -1877,23 +1729,32 @@ class library
 		return array_merge($remaining, $array);
 	}
 	
-	//in multi dimensional array
-	public function findArrayByKeyValue($array, $key, $value){
-		foreach($array as $subArray){
-			if (array_key_exists($key, $subArray) && $subArray[$key]==$value){
-				return $subArray;
-			}
-		}
-		return [];
+	// todo
+	public function array_sort_by_key2($array, $key, $direction=SORT_ASC){
+		$is_obj= is_object($array);
+		if ($is_obj)
+			$array = (array) $array;
+		$columns = array_column($array, $key);
+        if ( array_multisort($columns, $direction, $array) )
+			return ($is_obj ? (object) $array : $array);
+		else
+			throw new \Exception("Multisort failed");
 	}
-	public function findObjectByKeyValue($array, $key, $value){
-		$item = null;
-		foreach($array as $struct) {
-			if (property_exists($struct,$key) && $struct->{$key} == $value) {
-				return $struct;
+
+	//in multi dimensional array
+	public function array_find_by_key_value($array, $key, $value, $defaultValue = []){
+		foreach($array as $subArray){
+			if (is_array($subArray)) {
+				if (array_key_exists($key, $subArray) && $subArray[$key] === $value){
+					return $subArray;
+				}
+			} else {
+				if (property_exists($subArray, $key) && $subArray->{$key} === $value) {
+					return $subArray;
+				}
 			}
 		}
-		return new \stdClass();
+		return $defaultValue; //new \stdClass()
 	}
 
 	// array_diff ( array $array , array ...$arrays ): Compares array against one or more other arrays and returns the values in array that are not present in any of the other arrays.
@@ -2122,30 +1983,13 @@ class library
 		return is_array($array) ? array_map('recursive_for_array_value', $array) : $function_name($array); 
 	}
 
-
-	public function array_sort_by_key($array, $key, $direction=SORT_ASC){
-		$is_obj= is_object($array);
-		if ($is_obj)
-			$array = (array) $array;
-		$columns = array_column($array, $key);
-        if ( array_multisort($columns, $direction, $array) )
-			return ($is_obj ? (object) $array : $array);
-		else
-			throw new \Exception("Multisort failed");
-	}
-
-	public function keyAtIndex($index, $array){
-		$keys = array_keys($array);
-		return $keys[$index];
-	}
-
-	public function keyAfterKey($keyname, $array, $increment){
+	public function key_after_key($keyname, $array, $increment){
 		$keys = array_keys($array);
 		$current_key_index = array_search($keyname, $keys);
 		return $keys[array_search($keyname,$keys)+$increment];
 	}
 
-	public function arraySetKeysFromChild($array, $keyName){
+	public function array_set_keys_from_child($array, $keyName){
 		$new=[];
 		foreach($array as $key=>$value) { if (isset($value[$keyName])) $new[$value[$keyName]]=$value;   }
 		return $new; 
@@ -2155,11 +1999,7 @@ class library
 		return $new;  
 	}
 
-	public function ArrayColumnWithKey2($array,$keyName){
-		return array_filter(array_combine(array_keys($array), array_column($array, $keyName)));
-	}
-	
-	public function ArrayOnlyWithKey($array, $keyName, $target_level){
+	public function array_only_with_key($array, $keyName, $target_level){
 		$new	= []; 
 		$old	= $array; 
 		$value_0= $array;
@@ -2219,23 +2059,10 @@ class library
 		}
 		return ['with'=>$new, 'without'=>$old];  
 	}
-
-
-	public function array_last( $array )
-	{
-		if (is_array($array))
-		{
-			$keys = array_keys($array);
-			$key_last = $keys[ count($keys)-1];
-			return $array[$key_last];
-		}
-		elseif (is_object($array))
-		{
-			$keys = get_object_vars($array);
-			$key_last = $keys[count($keys)-1];
-			return $array->$key_last;
-		}
+	public function array_column_with_key_2($array,$keyName){
+		return array_filter(array_combine(array_keys($array), array_column($array, $keyName)));
 	}
+
 
 
 
@@ -2247,29 +2074,36 @@ class library
 	public function php_to_js_array($array){
 		return '["'. implode('","', $array ) .'"]';
 	}
-	public function xmlToArray($content)
-	{
-		try
-		{
-			$xml = simplexml_load_string($content, "SimpleXMLElement", LIBXML_NOCDATA);
-			return json_decode( json_encode($xml), TRUE);
-		} catch (Exception $ex) {
-			return ['xmlerror'=>$ex];
-		}
+	public static function xml_to_array($xml_string, $replace_colons=false, $opts=0 ){
+		return json_decode(self::xml_to_json($xml_string, $replace_colons, $opts), true);
+		// try
+		// {
+		// 	$xml = simplexml_load_string($content, "SimpleXMLElement", LIBXML_NOCDATA);
+		// 	return json_decode( json_encode($xml), TRUE);
+		// } catch (Exception $ex) {
+		// 	return ['xmlerror'=>$ex];
+		// }
 	}
-
-	public function xmlToArrayByKey($content, $keyName, $removeIfKeyIsOnlyChild=false)
+	public static function xml_to_json($xml_string, $replace_colons=false, $opts=0 ){
+		if ($opts===0) 
+			$opts = LIBXML_NOCDATA | LIBXML_COMPACT | LIBXML_NOENT ; //https://www.php.net/manual/en/libxml.constants.php : LIBXML_NOCDATA | LIBXML_COMPACT  | LIBXML_DTDLOAD |   
+		if ($replace_colons)
+			$xml_string = self::xml_tag_replace_colons($xml_string);
+		$xml = simplexml_load_string($xml_string, null, $opts);  
+		return json_encode($xml);
+	}
+	public function xml_to_array_by_key($content, $keyName, $removeIfKeyIsOnlyChild=false)
 	{
 		try
 		{
 			$xml = simplexml_load_string($content, "SimpleXMLElement", LIBXML_NOCDATA );
 			$array= json_decode( json_encode($xml), TRUE);
-			return $this->xmlSetChild($array, $keyName, $removeIfKeyIsOnlyChild);
+			return $this->xml_set_child($array, $keyName, $removeIfKeyIsOnlyChild);
 		} catch (Exception $ex) {
 			return ['xmlerror'=>$ex];
 		}
 	}
-	public function xmlSetChild($array, $keyName, $removeIfKeyIsOnlyChild=false)
+	public function xml_set_child($array, $keyName, $removeIfKeyIsOnlyChild=false)
 	{
 		$new_array= [];
 		foreach ($array as $key_1=>$value_1)
@@ -2283,7 +2117,7 @@ class library
 					if( $removeIfKeyIsOnlyChild && count($value_2)==1 && count($value_2['@attributes'])==1 ) 
 						$new_array[$key_1][$keyValue] = null;
 					else
-						$new_array[$key_1][$keyValue] = $this->xmlSetChild($value_2, $keyName, $removeIfKeyIsOnlyChild);
+						$new_array[$key_1][$keyValue] = $this->xml_set_child($value_2, $keyName, $removeIfKeyIsOnlyChild);
 				}
 			}
 			else{
@@ -2293,22 +2127,10 @@ class library
 		return $new_array;
 	}
 
-	public static function xml_to_array($xml_string, $replace_colons=false, $opts=0 ){
-		return json_decode(self::xml_to_json($xml_string, $replace_colons, $opts), true);
-	}
-	public static function xml_to_json($xml_string, $replace_colons=false, $opts=0 ){
-		if ($opts===0) 
-			$opts = LIBXML_NOCDATA | LIBXML_COMPACT | LIBXML_NOENT ; //https://www.php.net/manual/en/libxml.constants.php : LIBXML_NOCDATA | LIBXML_COMPACT  | LIBXML_DTDLOAD |   
-		if ($replace_colons)
-			$xml_string = self::xml_tag_replace_colons($xml_string);
-		$xml = simplexml_load_string($xml_string, null, $opts);  
-		return json_encode($xml);
-	}
 
 	public static function xml_tag_replace_colons($xmlData){
 		return preg_replace('~(</?|\s)([a-z0-9_]+):~is', '$1$2_', $xmlData);
 	}
-	
 	
 	public function array_to_xml_output($array) {
 		$xml_data = new \SimpleXMLElement('<?xml version="1.0"?><xml_data></xml_data>');
@@ -2324,16 +2146,15 @@ class library
 			else {	$xml_data->addChild("$key",htmlspecialchars("$value"));	}
 		}
 	}
-
 	//##############  ARRAYs #################
 
 	
+
 	public function unquote($txt){
 		return str_replace('"', "", str_replace("'", "", $txt) );
 	} 
 
-
-	public function getExtension($fileUrl)
+	public function get_extension($fileUrl)
 	{
 		$array=explode('.', basename(parse_url($fileUrl)['path']));
 		return $array[count($array)-1]; 
@@ -2345,7 +2166,7 @@ class library
 		return basename($array[$min-2]); 
 	}
 
-	public function ListAllInDir($path, $only_files = false) {
+	public function file_in_dir($path, $only_files = false) {
 		$all_list = new \RecursiveIteratorIterator(
 				new \RecursiveDirectoryIterator($path, \FilesystemIterator::SKIP_DOTS),
 				( $only_files ? \RecursiveIteratorIterator::LEAVES_ONLY : \RecursiveIteratorIterator::SELF_FIRST )
@@ -2357,7 +2178,7 @@ class library
 		return $files;
 	}
 
-	public function setProperty($obj, $property, $value) {
+	public function set_property($obj, $property, $value) {
 		$reflection = new \ReflectionClass($obj);
 		$property = $reflection->getProperty($property);
 		$property->setAccessible(true);
@@ -2368,30 +2189,13 @@ class library
 		return in_array( (!empty($domain) ? $domain : $this->domainCurrentWithoutPort), ['localhost','127.0.0.1','::1']); 
 	}
 
-	public function is_JSON($string){
-		return $this->is_JSON_string($string);
-	}
-	public function maybe_json($string){
-		$firstLetter = substr($string, 0, 1); 
-		$maybe_json = $firstLetter==='{' || $firstLetter==='[';
-		return $maybe_json;
-	}
-	
-
-	public function JsonData($string){
-		if ( !is_string($string) ) return null;
-		$x = json_decode($string, true);
-		if (!is_array($x)) return null;
-		return $x;
-	}
-
-	public function is_JSON_string($string){
+	public function is_json($string){
 		return (is_string($string) && is_array(json_decode($string, true)));
 	}
 
 	public function arrayed_json($answer){
 		$result = [];
-		if(!$this->is_JSON_string($answer)){
+		if(!$this->is_json($answer)){
 			$result['error'] = $answer;
 		}
 		else{
@@ -2402,7 +2206,7 @@ class library
 
 	public function arrayed_answer($answer){
 		$result = [];
-		if(!$this->is_JSON_string($answer)){
+		if(!$this->is_json($answer)){
 			$result['error'] = $answer;
 		}
 		else{
@@ -2411,12 +2215,14 @@ class library
 		return $result;
 	}
 
-	
-
+	public function maybe_json($string){
+		$firstLetter = substr($string, 0, 1); 
+		$maybe_json = $firstLetter==='{' || $firstLetter==='[';
+		return $maybe_json;
+	}
 
 	//from Wordpress codex
 	public static function is_serialized( $data, $strict = true ) { if ( ! is_string( $data ) ) { return false; } $data = trim( $data ); if ( 'N;' === $data ) { return true; } if ( strlen( $data ) < 4 ) { return false; } if ( ':' !== $data[1] ) { return false; } if ( $strict ) { $lastc = substr( $data, -1 ); if ( ';' !== $lastc && '}' !== $lastc ) { return false; } } else { $semicolon = strpos( $data, ';' ); $brace     = strpos( $data, '}' ); if ( false === $semicolon && false === $brace ) { return false; } if ( false !== $semicolon && $semicolon < 3 ) { return false; } if ( false !== $brace && $brace < 4 ) { return false; } } $token = $data[0]; switch ( $token ) { case 's': if ( $strict ) { if ( '"' !== substr( $data, -2, 1 ) ) { return false; } } elseif ( false === strpos( $data, '"' ) ) { return false; } case 'a': case 'O': return (bool) preg_match( "/^{$token}:[0-9]+:/s", $data ); case 'b': case 'i': case 'd': $end = $strict ? '$' : ''; return (bool) preg_match( "/^{$token}:[0-9.E+-]+;$end/", $data ); } return false; }
-
 
 	//https://www.php.net/manual/en/errorfunc.constants.php
 	public function errors_exception(){
@@ -2463,14 +2269,14 @@ class library
 	public function first_cookie_message($identifier, $message){
 		$cName=filter_var($identifier, FILTER_SANITIZE_STRING);
 		if (!isset($_COOKIE[$cName])){
-			setcookie($cName,'okk',time()+99999999, $this->constantX('homeFOLD','/'));
+			setcookie($cName,'okk',time()+99999999, $this->constant('homeFOLD','/'));
 			die($message);
 		}
 	}
 
-	public function CookieSet($name){ if (empty($_COOKIE[$name])) { return false;} else { return true;} }
-	public function CookieSetOnceExecution($name){ if (empty($_COOKIE[$name])) { setcookie($name, time(), time()+ 999999,  $this->constantX('homeFOLD','/') ); return true; } return false; }
-	public function CookieNotSet($name){ CookieSetOnceExecution($name); }
+	public function cookie_set($name){ if (empty($_COOKIE[$name])) { return false;} else { return true;} }
+	public function cookie_setOnceExecution($name){ if (empty($_COOKIE[$name])) { setcookie($name, time(), time()+ 999999,  $this->constant('homeFOLD','/') ); return true; } return false; }
+	public function cookie_not_set($name){ cookie_setOnceExecution($name); }
 
 	public function set_cookie($name, $val, $time_length = 86400, $path=false, $domain=false, $httponly=true, $only_on_secure_https = false){
 		$site_urls = parse_url( (function_exists('home_url') ? home_url() : $_SERVER['SERVER_NAME']) );
@@ -2491,11 +2297,11 @@ class library
 			
 		}
 	}
-	public function siteSlug() { return str_replace(array('.','/',':'),'_', $this->domain  ); }
+	public function site_slug() { return str_replace(array('.','/',':'),'_', $this->domain  ); }
 
-	public function site_visitor_default_cookiee() {return 'default_visitr_'.siteSlug(); }
+	public function site_visitor_default_cookiee() {return 'default_visitr_'.site_slug(); }
 
-	public function SetCookieForVisitors(){ setcookie(site_visitor_default_cookiee(), time()+1000, time()+1000, $this->constantX('homeFOLD','/'));  }
+	public function set_cookie_for_visitors(){ setcookie(site_visitor_default_cookiee(), time()+1000, time()+1000, $this->constant('homeFOLD','/'));  }
 	//      SetCookieForVisitors();
 
 	public function die_if_not_this_site_youtube(){if (!isset($_COOKIE[site_visitor_default_cookiee()])) {  die('noauth_6453'); } }
@@ -2633,7 +2439,7 @@ class library
 			// preg_replace('/[^\w\d_\-]/', '',  filter_var($input,	FILTER_SANITIZE_STRING)	);
 	public static function sanitize_digits($string){ return filter_var($string,FILTER_SANITIZE_NUMBER_INT);}
 	public static function sanitize_url($string)  	{ return filter_var($string,FILTER_SANITIZE_SPECIAL_CHARS);}
-	public static function SanitizeSymbol($str)	{ return str_replace(array('/','\\','|','!','*'), '_',   strip_tags( strtoupper(trim($str) )) ) ; } 
+	public static function sanitize_symbol($str)	{ return str_replace(array('/','\\','|','!','*'), '_',   strip_tags( strtoupper(trim($str) )) ) ; } 
 	public static function sanitize_url_dots($url)	{ return self::remove_double_slashes(str_replace('/..','', str_replace('\\','', $url) ) ); }
 
 	public static function sanitize_unicode($text, $replace_with=''){ 
@@ -2681,7 +2487,7 @@ class library
 		return str_replace(["\r","\n"],'', $text);
 	}
 	//
-	public static function removWhitespaces($input, $oneSpace=true){ 
+	public static function remove_whitespaces($input, $oneSpace=true){ 
 		$what = $oneSpace ? ' ':'';
 		$input= str_replace("   ",		$what,$input );
 		$input= str_replace("  ",		$what,$input );
@@ -2695,9 +2501,6 @@ class library
 		return $input;
 	}
 	
-
-	public static function stripCOODs($input){ return strip_shortcodes(strip_tags($input, '<h1></h1><br><br/><br /><br/ ><br / >< br>< br/>'));}
-
 	public static function str_replace_recursive($value, $replace, $string) {
 		$string = str_replace($value, $replace, $string);
 		if (strpos($string, $value)!==false) {
@@ -2788,7 +2591,7 @@ class library
 		return $address;
 	}
 
-	public function RemoveParameterFromUrl($full_url, $param_name){
+	public function remove_parameter_from_url($full_url, $param_name){
 		return $final = preg_replace('/(\&|\?)'.$param_name.'(\=(.*?(&|#)|.*)|)/i', (!empty('$4') ? '$4' : ''), $full_url);
 	}
 	
@@ -2835,7 +2638,7 @@ class library
 		return $sanitized;
 	}
 
-	public function doubleNormal($input, $round_to=15, $use_sprintf=true){ 
+	public function double_normal($input, $round_to=15, $use_sprintf=true){ 
 		return (!is_float($input) && !is_numeric($input) ? $input : (float) $this->trim_zero_dot( $use_sprintf ? sprintf("%.{$round_to}f", $input) : self::number_format($input, $round_to) ) );	
 	}
 	public static function number_format($input, $decimals=15, $method=1){ 
@@ -2845,9 +2648,6 @@ class library
 			$ret =sprintf("%.{$decimals}f", $input); 
 		return self::remove_zero_from_end($ret);
 	}
-	
-
-	
 	// method 2
 	public function decimal_outputer($input, $length=5, $only_dot=false){  
 		$timeParts = explode('.', $input);
@@ -2855,8 +2655,8 @@ class library
 		return ($only_dot ? '' : $timeParts[0] . '.') . substr($timeParts[1], 0, $length); //sprintf('%.10F',$input); 
 	}
 	//
-	public function doubleNormalArray($array){
-		return $this->array_map_deep([$this,'doubleNormal'], $array);
+	public function double_normal_array($array){
+		return $this->array_map_deep([$this,'double_normal'], $array);
 	}
 
 
@@ -2868,7 +2668,7 @@ class library
 	public function cut__my($text, $chars, $points = "...") {  $text = strip_tags($text);	if( strlen($text) <= $chars) { return $text;} else { return mb_strimwidth($text,0,$chars, $points,'utf-8'); } }
 	public function trim_string($text, $chars, $points = "...") {  if( strlen($text) <= $chars) { return $text;} else { return mb_strimwidth($text,0, $chars, $points,'utf-8'); } }
 
-	public function myUTF8truncate($string, $width){
+	public function truncate($string, $width, $unicode = true){
 		if (mb_str_word_count($string) > $width) {
 			$string= preg_replace('/((\w+\W*|| [\p{L}]+\W*){'.($width-1).'}(\w+))(.*)/', '${1}', $string);
 		}
@@ -2890,6 +2690,34 @@ class library
 			$got_content = implode(' ', $words);
 		endif;
 		return $got_content;	
+	}
+
+	public function get_first_words($sentence , $desired_words_amount=5){
+		$all_words = explode(' ', $sentence);  $words_amount = count($all_words);  $words_index_amount=$words_amount-1;
+		$out = '';
+		if ($words_amount > $desired_words_amount) {
+			for($i = 0; $i< $desired_words_amount; $i++) {
+				if(array_key_exists( $i,$all_words)){
+					$out = $out.' '.$all_words[$i];
+				}
+			}
+		}
+		else {$out = $sentence;  }
+		return strip_tags($out);
+	}
+
+	public function get_last_words($sentence , $desired_words_amount=5){
+		$all_words = explode(' ', $sentence);  $words_amount = count($all_words);  $words_index_amount=$words_amount-1;
+		$out = '';
+		if ($words_amount > $desired_words_amount) {
+			for($i = 0; $i< $desired_words_amount; $i++) {
+				if(array_key_exists( ($words_index_amount-$i),$all_words)){
+					$out = $all_words[($words_index_amount-$i)].' '.$out;
+				}
+			}
+		}
+		else {$out = $sentence;  }
+		return strip_tags($out);
 	}
 
 	public function unicode_words_count($string) {	preg_match_all('/[\pL\pN\pPd]+/u', $string, $matches);	return count($matches[0]);}
@@ -2919,10 +2747,9 @@ class library
 
 	
 	// ### substr shorthands:
-	public function charsFromStart($word, $amount) { return self::chars_from_start($word, $amount); }
-	public function charsFromEnd($word, $amount) { return self::chars_from_end($word, $amount); }
-	public function charsWithoutStartEnd($word, $removeFromStart, $removeFromEnd) { return self::chars_without_stard_end($word, $removeFromStart, $removeFromEnd); }
-
+	public function remove_chars_from_start_end($word, $removeFromStart, $removeFromEnd) {
+		return substr($word, $removeFromStart, -$removeFromEnd);
+	}
 	public static function chars_from_start($word, $amount)
 	{
 		return substr($word, 0, $amount);
@@ -2931,21 +2758,17 @@ class library
 	{
 		return substr($word, -$amount);
 	}
-	public function chars_without_stard_end($word, $removeFromStart, $removeFromEnd)
-	{
-		return substr($word, $removeFromStart, -$removeFromEnd);
-	}
-	
+	public function remove_if_starts_with($haystack, $needle) { return (!$this->starts_with($haystack, $needle) ? $haystack : substr($haystack, strlen($needle) ) ); }
+	public function remove_if_ends_with($haystack, $needle) { return (!$this->ends_with($haystack, $needle) ? $haystack : substr($haystack, 0, -1 * strlen($needle) ) ); }
 
 	// makes a string from an assiciative array
-	public function implodeAssoc($glue,$arr) 
+	public function implode_assoc($glue,$arr) 
 	{ 
 		$keys=array_keys($arr); 
 		$values=array_values($arr);
 		return(implode($glue,$keys).$glue.implode($glue,$values)); 
 	}
 
-	
 	public function url_correction_for_html_output($content){ 
 		return preg_replace_callback( 
 			'/\<(img|link|iframe|frame|frameset|script|embed|video|audio)([^>]*)/si', 
@@ -2983,17 +2806,17 @@ class library
 
 	public static function contains($content, $needle, $case_sens=true, $position='any'){ 
 		if ($position==='start'){
-			return self::startsWith($content, $needle, $case_sens);
+			return self::starts_with($content, $needle, $case_sens);
 		}
 		elseif ($position==='end'){
-			return self::endsWith($content, $needle, $case_sens);
+			return self::ends_with($content, $needle, $case_sens);
 		}
 		else{
 			return ($case_sens ? strpos($content, $needle)!==false : stripos($content, $needle)) !== false;
 		}
 	}
 
-	public function contains_AgainstArray($content, $needles_array, $case_sens= true, $position='any'){   
+	public function contains_from_array($content, $needles_array, $case_sens= true, $position='any'){   
 		foreach($needles_array as $needle){
 			if ($this->contains($content, $needle, $case_sens, $position) ){
 				return true;
@@ -3003,7 +2826,7 @@ class library
 	}
 
 	// https://stackoverflow.com/a/860509/2377343
-	public static function startsWith($haystack, $needle, $case_sens=true) {
+	public static function starts_with($haystack, $needle, $case_sens=true) {
 		return $needle === "" || 
 		( 
 			( $case_sens && strpos($haystack, $needle, 0) === 0 )
@@ -3012,31 +2835,27 @@ class library
 		)
 		; 
 	}
-	public static function startsWith_AgainstArray($haystack, $needles_array, $case_sens=true) { 
+	public static function starts_with_from_array($haystack, $needles_array, $case_sens=true) { 
 		foreach($needles_array as $needle){
-			if (self::startsWith($haystack, $needle, $case_sens))
+			if (self::starts_with($haystack, $needle, $case_sens))
 				return true;
 		}
 		return false;
 	}
-	public static function endsWith($haystack, $needle, $case_sens=true) { 
+	public static function ends_with($haystack, $needle, $case_sens=true) { 
 		$expectedPosition = strlen($haystack) - strlen($needle);
 		if ($case_sens)
 			return strrpos($haystack, $needle, 0) === $expectedPosition;
 		return strripos($haystack, $needle, 0) === $expectedPosition;
 	}
-	public static function endsWith_AgainstArray($haystack, $needles_array, $case_sens=true) { 
+	public static function ends_with_from_array($haystack, $needles_array, $case_sens=true) { 
 		foreach($needles_array as $needle){
-			if (self::endsWith($haystack, $needle,$case_sens))
+			if (self::ends_with($haystack, $needle,$case_sens))
 				return true;
 		}
 		return false;
 	}
 
-
-	public function startsWithRemove($haystack, $needle) { return (!$this->startsWith($haystack, $needle) ? $haystack : substr($haystack, strlen($needle) ) ); }
-	public function endsWithRemove($haystack, $needle) { return (!$this->endsWith($haystack, $needle) ? $haystack : substr($haystack, 0, -1 * strlen($needle) ) ); }
-	public function startsWithReplace($haystack, $needle, $replace) { return (!$this->startsWith($haystack, $needle) ? $haystack : $replace.substr($haystack, strlen($needle) ) ); }
 
 	public function die_if_not_this_site_visitor(){ //if half day passed
 		if (empty($_COOKIE['ytdow___']) || $_COOKIE['ytdow___'] > time()*3 + 43200 ) {die('incorrect_download_<b>123</b>.<script type="text/javascript">top.window.location = "http://'.$_SERVER['HTTP_HOST'].'";</script>');}
@@ -3103,7 +2922,7 @@ class library
 		}
 		// whether it's without `-100` prefix
 		$chat_id = strval($chat_id);
-		if (!$this->startsWith($chat_id, '-100')) $chat_id = '-100' . $chat_id;
+		if (!$this->starts_with($chat_id, '-100')) $chat_id = '-100' . $chat_id;
 		$text = $this->br2nl($text);
 		$text = strip_tags($text,'<b><strong><i><em><u><ins><s><strike><del><a><code><pre>'); // allowed: https://core.telegram.org/bots/api#html-style
 		$text = substr($text,0,4095); //max telegram message length 4096
@@ -3321,9 +3140,9 @@ class library
 	}
 
 	
-	// $ipinfo = json_decode(getIpInfo($_SERVER['REMOTE_ADDR']), true);
+	// $ipinfo = json_decode(get_ip_info($_SERVER['REMOTE_ADDR']), true);
 	// if($ipinfo['country_name'] != 'Georgia'){
-	public function getIpInfo($ip, $type=1, $api=""){
+	public function get_ip_info($ip, $type=1, $api=""){
 		$info="";
 		if($type==1){
 			$info = $this->get_remote_data('https://geoip-db.com/json/'.$ip);	
@@ -3341,9 +3160,6 @@ class library
 		}
 		return $info;
 	}
-
- 
-	public function CurrentSiteIs($site){ return $site == $_SERVER['HTTP_HOST']; }
 
 	public function output_js_headers()
 	{
@@ -3364,10 +3180,10 @@ class library
 		
 	public function input_fields_from_array($value, $keyname='', $replace_spaces=false){	//$keyname= (strpos($keyname,'[') === false) ? '['.$keyname.']' : $keyname;
 		echo '<div class="array_fields1"><style>.array_fields1 textarea{max-height:200px!important;  border-radius: 5px; width:100%; color:#53ae14; border: 2px solid black; margin:0 0 0 0px; height:50px; }  .def_textareaa{height:70px;} .high_textarea{height:130px;} .new_block{MARGIN:0 0 0 50px; border:2px solid; border-width:0 0 0 2px;} .txtar{padding:0 0 0 25px;}  .new_block .keyname{color:rgb(248, 48, 83);} </style>';
-		$this->input_fields_from_array_RECURSIVE($value, $keyname, $replace_spaces);
+		$this->input_fields_from_array_recursive($value, $keyname, $replace_spaces);
 		echo '</div>';
 	}
-	public function input_fields_from_array_RECURSIVE($value, $keyname='', $replace_spaces=false){		
+	public function input_fields_from_array_recursive($value, $keyname='', $replace_spaces=false){		
 		if (!is_array($value)){
 			$height=30; $lines=explode("\r\n",$value); 
 				foreach($lines as $eachLINE){
@@ -3395,7 +3211,7 @@ class library
 		return '#' . str_pad(dechex(mt_rand(0, 0xFFFFFF)), 6, '0', STR_PAD_LEFT).$alpha;
 	}
 
-	public function contentHeight($content, $lineHeight=30){
+	public function content_height($content, $lineHeight=30){
 		$lines=explode("\n", $content); 
 		$height = $lineHeight;
 		foreach($lines as $eachLINE){
@@ -3427,7 +3243,6 @@ class library
 		});</script><?php }
 	}
 
-
 	public function dropdown_from_array($array, $name, $selected){
 		$out =
 		'<select name="'.$name.'">';
@@ -3437,65 +3252,6 @@ class library
 		return '<div>'.$out.'</div>';
 	}
 
-	public function dropdown_for_categories($ul___id_class, $ShowPlusMinusDropdown = false){	
-		if (!defined('drp_already_out')) {   define('drp_already_out', true);  ?>
-	<style>
-	.ChildHidden {} 
-	.OPCL_containtr{float:right; display: inline-block; text-align:right; height:30px;width:30px; }
-	.drop_CLOSE{background:transparent url("<?php echo $this->baseURL.'library/media/other/sign-minus.png';?>") no-repeat scroll 0% 0%; }
-	.drop_OPEN{background:transparent url("<?php echo $this->baseURL.'library/media/other/sign-plus.png';?>") no-repeat scroll 0% 0%;}
-	.ChildHidden ul.sub-menu{display:none;}	
-	.OpenCloseSp {display: inline-block;height: 30px;width: 30px;}
-	zzzz body li.ChildHidden > a {display: inline-block;} 
-	</style>
-	<script type="text/javascript">
-	public function make_element_children_dropdowned(element, ShowPlusMinusSign){
-		if (element) {
-			element.each(function( index,key ) { 
-			  if (key.className.indexOf("menu-item-has-children") >= 0) {
-				$( this ).addClass("ChildHidden");
-				if (ShowPlusMinusSign) { $(this).children('a').append('<span class="OPCL_containtr"> <span class="OpenCloseSp drop_OPEN"> </span> </span>'); }
-				
-				$( this ).children('a').click(function() {
-					if (ShowPlusMinusSign) { $(this).children('.OPCL_containtr').find('span.OpenCloseSp').toggleClass('drop_OPEN drop_CLOSE'); }
-					$(this).siblings('ul.sub-menu').toggle();
-					return false;
-				});
-			  }
-			});
-		}
-	}
-	</script>	
-	<?php 
-		} ?>
-		<script type="text/javascript">
-		var Containr = $("<?php echo $ul___id_class;?>");
-		var ShowPlusMinusSign = false;  <?php if ($ShowPlusMinusDropdown) { ?> ShowPlusMinusSign = true;  <?php } ?>
-		make_element_children_dropdowned(Containr,ShowPlusMinusSign);
-		</script>
-		<?php	
-	}
-
-	 
-	public function expand_CHILD_menu_by_a_name($ul___a_class, $A_href_NAMEs=array() ){	?>
-		<script type="text/javascript">
-		var A_names = [<?php foreach ($A_href_NAMEs as $key=>$each) {echo '"'.$each.'"'; if($key != count($A_href_NAMEs)-1) echo ',';  } ?>];
-		var Containr2 = $("<?php echo $ul___a_class;?>");
-		if (Containr2) { 
-			Containr2.each(function( index,key ) { 
-			  if (A_names.indexOf(key.innerHTML) > -1) {
-				var ff= $(this).siblings('ul.sub-menu').addClass("displayblock");
-			  }
-			});
-		}
-		</script>	
-		<?php	
-	}
-	
-	
-	
-	
-	
 	public function loader($type="")
 	{
 		$circlecolor="#ffffff"; 
@@ -3543,8 +3299,7 @@ class library
 		return $final;
 	}
 
-
-	public function get_user_OperatingSystem() { 
+	public function get_user_OS() { 
 		if (empty($_SERVER['HTTP_USER_AGENT'])) $_SERVER['HTTP_USER_AGENT']="unknown";
 		$user_agent=$_SERVER['HTTP_USER_AGENT']; $final =array(); $final['os_namee']="_Unknown_OS_";  $final['os_typee']="_Unknown_OS_";
 		$os_array=array(
@@ -3560,14 +3315,6 @@ class library
 		return $final;
 	}
 
-
-	public function OS_platforms()
-	{
-		if (property_exists($this, 'platforms_cached')) return $this->platforms_cached;
-		$this->platforms_cached = array_merge( $this->get_user_browser(), $this->mobile_detect(), $this->get_user_OperatingSystem() );
-		return $this->platforms_cached;
-	}
-	
 	// https://stackoverflow.com/a/31476046/2377343 
 	public function get_url_parts($url,$part){	 $x='';
 		$pURL = parse_url($url);	$pthURL = pathinfo($url);		
@@ -3597,10 +3344,7 @@ class library
 	}
 
 	public function json_encode_unicode($data){ return json_encode($data, JSON_UNESCAPED_UNICODE); }
-	
-	public function FilterUrlFromLang($url){	return preg_replace('/(\&|\?)lg\=((.*?)&|(.*))/si','',$url); }
-	
-	
+
 	public function trailing_slash ($path) {
 		return $this->untrailing_slash($path) . '/';
 	}
@@ -3613,12 +3357,9 @@ class library
 	public function utf8_declarationn_auto() { return '<meta http-equiv="content-type" content="'.get_bloginfo('html_type').'; charset='.get_bloginfo('charset').'">'; }
 
 
-	public function HTML_DOCTYPE_DECLARATIONsss(){  $lng = (defined('LNG') ? LNG : '') ;
-		return 
-	'<!DOCTYPE html>
-	<html id="pagehtml" class="LN_'.$lng.'" xmlns:fb="https://www.facebook.com/2008/fbml" xmlns:og="https://opengraphprotocol.org/schema/" xmlns="https://www.w3.org/1999/xhtml" lang="'.$lng.'" xml:lang="'.$lng.'" >';
+	public function default_html_declaration($lng = 'en'){
+		return '<!DOCTYPE html> <html id="pagehtml" class="lang lang_'.$lng.'" xmlns:fb="https://www.facebook.com/2008/fbml" xmlns:og="https://opengraphprotocol.org/schema/" xmlns="https://www.w3.org/1999/xhtml" lang="'.$lng.'" xml:lang="'.$lng.'" >';
 	}
-
 
 	public function default_rss_head_tags(){ 
 	?> 	<link rel="alternate" type="application/rss+xml" title="RSS 2.0" href="<?php bloginfo('rss2_url'); ?>" />
@@ -3628,13 +3369,13 @@ class library
 	}
 
 	//add_actionX('wp_head','check_if_js_cookies_enabled');
-	public function check_if_JS_enabled(){	$out = 
+	public function check_if_enabled_js(){	$out = 
 		'<noscript>
 			<div style="text-align:center; position:absolute;background-color:red;">Enable Javascript in your Browser to avoid BROWSER problems!</div>
 		</noscript>';
 		return	$out;
 	}				
-	public function check_if_COOKIES_enabled(){ $out1 = 
+	public function check_if_enabled_cookies(){ $out1 = 
 			'<script>
 			function check_if_cookies_are_enabled(){ 
 				var temp_cooK_name="__verify=1"; var dattee = new Date();dattee.setTime(dattee.getTime()+(30*1000));
@@ -3646,11 +3387,10 @@ class library
 			</script>';
 		return $out1;
 	}			
-		
 	
 	public function old_browser_message($first=null, $incompatible_browsers=array('MSIE') ){
 		global $odd;
-		if (in_array($this->platforms()['brwsr'], $incompatible_browsers) ) { echo '<div style="padding:20px;text-align:center;position:fixed; top:0px;left:0px; z-idnex:99; background:red;color:black; ">Your have an INCOMPATIBLE BROWSER! Please, use any modern browser (<b><a href="https://www.firefox.com">Firefox</a>, <a href="https://www.opera.com">Opera</a>, <a href="https://www.apple.com/safari/‎">Safari</a> , <a href="https://www.chrome.com">Chrome</a></b>..) to view site normally. </div>'; }
+		if (in_array($this->platforms()['brwsr'], $incompatible_browsers) ) { echo '<div style="padding:20px;text-align:center;position:fixed; top:0px;left:0px; z-idnex:99; background:red;color:black; ">Your have an INCOMPATIBLE BROWSER! Please, use any modern browser (<b><a href="https://www.firefox.com">Firefox</a>, <a href="https://www.opera.com">Opera</a>, <a href="https://www.apple.com/safari/">Safari</a> , <a href="https://www.chrome.com">Chrome</a></b>..) to view site normally. </div>'; }
 	}	
 
 
@@ -3661,12 +3401,12 @@ class library
 
 	// ==================== text to image==============
 	// # Usage #
-	//TextToImage_my( 
+	//text_to_image_my( 
 	//	$text='Helloooo World!' , 
 	//	$separate_line_after_chars=40,   $font='./Arial%20Unicode.ttf',    $size=24,   $rotate=0,   $padding=0,   $transparent=true,  $color=['r'=>0,'g'=>0,'b'=>0],   $bg_color=['r'=>255,'h'=>255,'b'=>255] 
 	//);
 	
-	public function TextToImage($text, $separate_line_after_chars=40,  $font='./Arial%20Unicode.ttf', 
+	public function text_to_image($text, $separate_line_after_chars=40,  $font='./Arial%20Unicode.ttf', 
 		$size=24,$rotate=0,$padding=2,$transparent=true, $color=array('r'=>0,'g'=>0,'b'=>0), $bg_color=array('r'=>255,'g'=>255,'b'=>255) ){
 		$amount_of_lines= ceil(strlen($text)/$separate_line_after_chars)+substr_count($text, '\n')+1;
 		$all_lines=explode("\n", $text);  $amount_of_lines = count($all_lines);    $text_final='';
@@ -3714,7 +3454,7 @@ class library
 		imagePNG($image);
 	}
 	
-	public function textToImage2($your_text="heloooo", $width=250, $height=80)
+	public function text_to_image2($your_text="heloooo", $width=250, $height=80)
 	{
 		$IMG = imagecreate( $width, $height );
 		$background = imagecolorallocate($IMG, 0,0,255);
@@ -3731,6 +3471,7 @@ class library
 		imagedestroy($IMG); 
 		exit;   
 	}
+
 	// https://mekshq.com/how-to-convert-hexadecimal-color-code-to-rgb-or-rgba-using-php/
 	public function hex2rgba($color, $opacity = false) {
 		$default = 'rgb(0,0,0)';
@@ -3769,6 +3510,128 @@ class library
 		return '#'.trim($this->array_value($arr, $name, 'FFFFFFFF'));
 	}
 	
+	//addTextOnImage( ['text'=>'hello',  'input'=>'img.png', 'echo'=>false, 'method'=>'gd|imagick', 'fontsize'=>9, 'angle'=>-15, 'x'=>11, 'y'=>14, 'color'=>'#e7e7e7', 'opacity'=>0.5, 'stroke'=>['#e7e7e7',$width=4,$alpha=0.5], 'spaces'=>3]); //also, font
+	public function add_text_on_image($opts=[])
+	{
+		//v_dump(glob("C:\Windows\Fonts\*"));
+		//v_dump($Imagick->queryFonts("*"));
+		$text 		= $opts['text'];
+		$imagePath	= $opts['input'];
+		$fontsize	= $opts['fontsize'];
+		list($width, $height, $type, $attr) =getimagesize($imagePath); 
+		$x_position = $this->array_value($opts,'x',0);
+		$y_position = $this->array_value($opts,'y',0);
+		if (strpos($x_position,'%')!==false) $x_position = $width * str_replace('%','',$x_position)/100;
+		if (strpos($y_position,'%')!==false) $y_position = $height * str_replace('%','',$y_position)/100;
+		
+		if( $this->array_value($opts, 'text_repeat') === true)
+		{
+			$final_text="";
+			$multiplier=4; //lets say 3 for assurance
+			$spaces_between = $this->array_value($opts, 'spaces',5);
+			$repeated_per_width = ($width / (strlen($text) * $fontsize)) * $multiplier;
+			$repeated_per_height= ($height / ($fontsize)) * $multiplier;
+			
+			for ($i=0; $i<$repeated_per_height; $i++)
+			{
+				$t= "";
+				for ($j=0; $j<$repeated_per_width; $j++)
+				{
+					$t .= $text . str_repeat(" ", $spaces_between );
+				}
+				$final_text .=$t. "\r\n";
+			}
+			$text = $final_text;
+		}
+
+		if ($this->array_value($opts, 'method') ==='gd') 
+		{
+			// FETCH IMAGE & WRITE TEXT
+			$im = imagecreatefrompng($imagePath); 
+			//imagecolorclosest  imagecolorallocate
+			$red = imagecolorclosest($im, 0xFF, 0x00, 0x00);		
+			$black = imagecolorclosest($im, 0x00, 0x00, 0x00);		
+			$white = imagecolorclosest($im, 255, 255, 255);
+			// imagecolorallocate(imagecreatetruecolor(111, 111), 2, 2, 2)
+			//$color = $red;//$red;
+
+			imagefttext($im, $fontsize=$opts['fontsize'], $angle=$opts['angle'], $x_pos=$x_position, $y_pos=$y_position, $color=$opts['color'], $font=$opts['font'], $text);
+			imagealphablending($im, false);
+			imagesavealpha($im, true);
+			if ($resize=false)
+			{
+				$percent=0.5;
+				$new_width = $width * $percent;
+				$new_height = $height * $percent;
+				$image_p = imagecreatetruecolor($new_width, $new_height);
+				imagecopyresampled($im, $im, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
+			}
+
+			// Output and free memory
+			header('Content-type: image/png');
+			imagepng($im);
+			imagedestroy($im);
+		}
+		else
+		{
+			// https://mlocati.github.io/articles/php-windows-imagick.html
+			// https://www.php.net/manual/en/book.imagick.php
+			$Imagick = new \Imagick();
+			$Imagick->readImage($imagePath);
+			$Imagick->setImageFormat( $format = $this->array_value($opts,'format','png') );
+			//$Imagick->setCompressionQuality ( 0 );
+			
+			$ImagickDraw = new \ImagickDraw();
+			$ImagickDraw->setFontSize( $fontsize );
+			$ImagickDraw->setTextAntialias ( true );
+			if (array_key_exists('font',$opts) )
+				$ImagickDraw->setFont( $font=$opts['font'] );
+			
+			if ( array_key_exists('stroke', $opts))
+			{
+				$ImagickDraw->setStrokeColor($opts['stroke'][0]);
+				$ImagickDraw->setStrokeWidth($opts['stroke'][1]);
+				$ImagickDraw->setStrokeOpacity($opts['stroke'][2]);
+			}
+			$ImagickDraw->setFillColor($color=$opts['color']);
+			$ImagickDraw->setFillOpacity($opacity=$opts['opacity']);
+			
+			//$ImagickDraw->setGravity( Imagick::GRAVITY_CENTER );
+			$Imagick->annotateImage( $ImagickDraw, $x_pos=$x_position, $y_pos=$y_position, $angle=$opts['angle'], $text);
+
+			if ($opts['echo'])
+			{
+				header( "Content-Type: image/{$Imagick->getImageFormat()}" );
+				echo $Imagick->getImageBlob();
+			}
+			else{
+				$Imagick->writeImage($imagePath);
+			}
+		}
+	}
+	
+	public function output_image($file=''){ 
+		if ( !in_array( $this->get_extension($file), ['jpg','jpeg','png','bmp','gif']) ) exit ('');
+		header("Content-type: image/png");  die( $this->file_get_contents($file)  ); 
+	}
+
+	//not_founded_images_redirections (when on FTP, the file is not found, then automatically, the site is loaded.. so, in this case, use our function.
+	public function not_found_images_redirect() {
+		if (in_array( $this->get_url_parts($this->currentURL,'extension'), ['png','jpg','jpeg','gif','bmp','svg']))		{  
+			echo '<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg viewBox="0 85 80 120" xmlns="http://www.w3.org/2000/svg"><style></style><text x="0" y="100" class="small">Image error</text></svg>'; exit;
+		}
+	}
+
+	public function resize_image($imagePath, $width, $height=0, $auto_proportion=true, $filter=false, $blur=1)
+	{
+		$Imagick = new \Imagick();
+		$Imagick->readImage($imagePath);
+		//$Imagick->setImageFormat( $format = $this->array_value($opts,'format','png') );
+		$filter= !$filter ? \Imagick::FILTER_LANCZOS : $filter;  //FILTER_LANCZOS
+		$Imagick->resizeImage($width, $height, $filter, $blur, $auto_proportion );
+		$Imagick->writeImage($imagePath);
+	}
+
 	//======helper function==========
 	//if(!function_exists('mb_substr_replace')){
 	  function mb_substr_replace($string, $replacement, $start, $length = null, $encoding = "UTF-8") {
@@ -3793,13 +3656,11 @@ class library
 		}
 	//}
 
-	
-	public function  header_mail($from=false, $host= false){ 
+	public function header_mail($from=false, $host= false){ 
 		$from = $from ? $from : "contact"; 
 		$host = $host ? $host : $_SERVER['HTTP_HOST'];//$_SERVER['SERVER_ADDR']; 
 		return array('From: '.$from.'@'.$host . "\r\n" .  'Reply-To: '.$from.'@'.$host . "\r\n" .  'X-Mailer: PHP/' . phpversion());
 	}
-
 
 	public function value_or_input_field($namee){
 		if (!empty($GLOBALS['editing_inputs'])){
@@ -3817,20 +3678,6 @@ class library
 	   return ksort($array);
 	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-	
-
 	public function die_if_array_key($array, $key){ if (array_key_exists($key, $array)) exit($array[$key]); }
 
 	public function chars_array_($alhpanumeric=true){  return  ( $alhpanumeric ?
@@ -3839,7 +3686,6 @@ class library
 			array('!','$','+','<','[',']','%',',','.','=','&','-','<','>','|', '"', '\'', '\\', '~','(','/',')','!',' ',"\r","\n", '*', '{','}','?','`','@',':',';','^')
 		);
 	}
-
 
 	public function preg_quote_fast($text){
 		$specs =array('/', '.','\\','+','*','?','[','^',']','$','(',')','{','}','=','!','<','>','|',':','-');
@@ -3850,9 +3696,6 @@ class library
 		$text = strtr( $text, $new_array_for_strtr);
 		return $text;
 	}
-
-	public function Convert_Empty_to_Zero ($var){ if (empty($var)) return 0; else return $var; }
-
 
 	public function checkboxes($checkbox_name,$current_value, $unchecked_value,$checked_value){
 		$out = '<input type="hidden" name="'.$checkbox_name.'" value="'.$unchecked_value.'" /><input class="chbkx" type="checkbox"  name="'.$checkbox_name.'" value="'.$checked_value.'" '. ($current_value==$checked_value ? 'checked="checked"': '') .' />'; return $out;
@@ -3865,11 +3708,6 @@ class library
 		return $url_or_Tag ? $url : '<script src="'.$url.'"></script>';
 	}
 
-	public function OutputIfNotPC($var){ if($GLOBALS['odd']['is_portable_platform']){echo $var;} }
-
-	// common funcs
-			
-
 	public function my_translate_month_inside($string = '27/January/2015'){
 		foreach($GLOBALS['odd']['months_arr'] as $each){
 			if(strpos($string,$each)!==false) { 
@@ -3879,40 +3717,10 @@ class library
 		return $string;
 	}
 
-	public function get_First_words($sentence , $desired_words_amount=5){
-		$all_words = explode(' ', $sentence);  $words_amount = count($all_words);  $words_index_amount=$words_amount-1;
-		$out = '';
-		if ($words_amount > $desired_words_amount) {
-			for($i = 0; $i< $desired_words_amount; $i++) {
-				if(array_key_exists( $i,$all_words)){
-					$out = $out.' '.$all_words[$i];
-				}
-			}
-		}
-		else {$out = $sentence;  }
-		return strip_tags($out);
-	}
-
-	public function get_Last_words($sentence , $desired_words_amount=5){
-		$all_words = explode(' ', $sentence);  $words_amount = count($all_words);  $words_index_amount=$words_amount-1;
-		$out = '';
-		if ($words_amount > $desired_words_amount) {
-			for($i = 0; $i< $desired_words_amount; $i++) {
-				if(array_key_exists( ($words_index_amount-$i),$all_words)){
-					$out = $all_words[($words_index_amount-$i)].' '.$out;
-				}
-			}
-		}
-		else {$out = $sentence;  }
-		return strip_tags($out);
-	}
-
 	public function my_utf8_decode($textt){
 		$var = $textt;	$var = iconv("UTF-8","ISO-8859-1//IGNORE",$var);	$var = iconv("ISO-8859-1","UTF-8",$var); $var = str_replace(' ','',$var);
 		return $var;
 	}
-
-
 
 	// ============================================= YOUTUBE DOWNLOAD FUNCTIONS ====================================================
 	// https://pastebin_com/bFePMkfy
@@ -3922,7 +3730,6 @@ class library
 	//  https://img.youtube.com/vi/xxxxxxxxx/hqdefault.jpg
 	//  https://img.youtube.com/vi/xxxxxxxxx/maxresdefault.jpg
 	public function get_youtube_thumbnail($id,$quality='maxres'){return 'https://i.ytimg.com/vi/'.$id.'/'.$quality.'.jpg';}  
-		
 
 	//to check if variable are normal
 	public function get_youtube_id_from_url($url) {
@@ -3935,8 +3742,6 @@ class library
 		return (!empty($x) ? $x : '');
 	}
 
-	public function get_youtube_id_from_contents_JAVASCRIPT(){ return '<script type="text/javascript">'. 'function getYtIdFromURL(URLL){var r=URLL.match(/^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*/); return r[1];} '. '</script>';
-	} 
 	public function validate_youtube_id($id){ if (strlen($id)!=11 || preg_match('/[\<\>\'\=\$\"\?\(\{]/si',$text)) {die("incorrrrrect_ID_ error79");	 }}
 	//#################################
 		
@@ -3960,7 +3765,7 @@ class library
 		}
 	}
 	
-	public function Serialized_Fixer($serialized_string){
+	public function serialized_fixer($serialized_string){
 		// securities
 		if (empty($serialized_string)) 						return '';
 		if ( !preg_match('/^[aOs]:/', $serialized_string) )	return $serialized_string;
@@ -3974,37 +3779,11 @@ class library
 		;
 	}
 
-	public function myIMGurlencode2($imgUrl){
-		preg_match('/(.*)\/(.*)/si',$imgUrl, $n);	$x = (!empty($n[1]) && !empty($n[2])) ? $n[1].'/'.str_replace('+','%20',urlencode($n[2])) : "error_29858";  return $x;
-	}
-
-	public function myIMGurlencode($imgUrl){
+	public function img_urlencode($imgUrl){
 		return str_replace('/'.basename($imgUrl) ,  '/'.str_replace('+','%20',basename($imgUrl)),       $imgUrl);
 	}
-
-
-	public function AddStringToUrl($url, $string){
-		return $url .( stripos($url,'?')===false ?  '?'.$string :  '&'.$string);
-	}
-
-	//check, if AJAX has requested error send
-	public function check_error_AJAX_request(){	if (isset($_REQUEST['ErrorAjax'])){  	
-		$this->error_notify_admin__MYDDD(  rawurldecode($_REQUEST['ErrorAjax']) ,  urlencode($_REQUEST['p'])  );  exit("sent");
-	}}
-
-	public function error_notify_admin($error_msg=false,$postidd=false){ return error_notify_admin__MYDDD($error_msg,$postidd); }
-	public function error_notify_admin__MYDDD($error_msg=false,$postidd=false){ 	if (is_localhost) return;
-		// usage https://github.com/ttodua/useful-javascript/blob/master/AJAX-examples
-		//'<script type="text/javascript">myyAjaxRequest('error_ajaxx=' + encodeURIcomponent(document.URL) + '&p= [[[[$GLOBALS['post']->ID]]]] &bla=blabla');</script>';
-			$message	="\r\n\r\n\r\n\r\n\r\n\r\n===============================================================".date("Y-m-d H:i:s")."\r\n" . $error_msg. ' ||| URL:'.  ($postidd ?  get_permalink($postidd) : "") . " | " . $_SERVER['REQUEST_URI']. ' | REFERER:'. $_SERVER['HTTP_REFERER']."\r\n\r\nbacktrace:\r\n".print_r(debug_backtrace(), true); 
-		
-		//write into file
-			//$file=$this->baseDIR.'/zzz___ajax_error_notifications_'.$this->my_site_variables__secret('rand_name', RandomString(11)).'.txt';   OR    $this->filecreat($file,$message, FILE_APPEND);
-		// send to mail
-			$subjectt	='error_'.$_SERVER['HTTP_HOST'];
-			$message=str_replace(array("\r\n","\n"),"<br/>",$message);  $message=str_replace(array("\s"," ","\t"),"&nbsp;",$message);
-			return $this->my_mail($this->error_to_mailaddress, $subjectt, $message, $this->default_mail_headers() );
-			return "mail was not sent... check functionality";
+	public function img_urlencode2($imgUrl){
+		preg_match('/(.*)\/(.*)/si',$imgUrl, $n);	$x = (!empty($n[1]) && !empty($n[2])) ? $n[1].'/'.str_replace('+','%20',urlencode($n[2])) : "error_29858";  return $x;
 	}
 
 	// i.e. get_remote_data(' tinyurl.com/api-create.php?url='.$url); 
@@ -4043,10 +3822,10 @@ class library
 		}
 		return $url[$type];
 	}
-	public function encodeSvg($content){ return str_replace(['<','>', '#', '"'], ['%3C','%3E', '%23', '\''], $content); }
-	public function imageSvg($which){ return 'data:image/svg+xml;charset=UTF-8,'. $this->encodeSvg( $this->images($which, 'svg') ); }
+	public function encode_svg($content){ return str_replace(['<','>', '#', '"'], ['%3C','%3E', '%23', '\''], $content); }
+	public function image_svg($which){ return 'data:image/svg+xml;charset=UTF-8,'. $this->encode_svg( $this->images($which, 'svg') ); }
 	
-	public function addQueryArg($url, $key, $value){
+	public function add_to_query($url, $key, $value){
 		$pair = urlencode($key).'='.urlencode($value);
 		return ($this->contains($url,'?') ? $url."&$pair" :  $url."?$pair");
 	}
@@ -4065,120 +3844,16 @@ class library
 			$content = '';
 			$mouseover = ' onmouseover="jQuery(\'<div>'.$text.'</div>\').dialog({   modal:true,   width:600 });"';
 		}
-		if (empty($question_mark)) $question_mark=$this->imageSvg('questionMark-1');
+		if (empty($question_mark)) $question_mark=$this->image_svg('questionMark-1');
 		return '<span id="xx"><img src="'. $question_mark .'" class="question_mark" style="cursor:crosshair; width:20px;" alt="'.$content.'" title="'.$content.'" '.$mouseover.' /></span>';
 	}
 
-
-	
 	public function between($a,$b,$c){
 		return ($a<$b && $b<$c);
 	}
 	public function inside($a,$b,$c){
 		return ($this->between($a,$b,$c) || $this->between($c,$b,$a) );
 	}
-	
-	//addTextOnImage( ['text'=>'hello',  'input'=>'img.png', 'echo'=>false, 'method'=>'gd|imagick', 'fontsize'=>9, 'angle'=>-15, 'x'=>11, 'y'=>14, 'color'=>'#e7e7e7', 'opacity'=>0.5, 'stroke'=>['#e7e7e7',$width=4,$alpha=0.5], 'spaces'=>3]); //also, font
-	public function addTextOnImage($opts=[])
-	{
-		//v_dump(glob("C:\Windows\Fonts\*"));
-		//v_dump($Imagick->queryFonts("*"));
-		$text 		= $opts['text'];
-		$imagePath	= $opts['input'];
-		$fontsize	= $opts['fontsize'];
-		list($width, $height, $type, $attr) =getimagesize($imagePath); 
-		$x_position = $this->arrayKeyValue($opts,'x',0);
-		$y_position = $this->arrayKeyValue($opts,'y',0);
-		if (strpos($x_position,'%')!==false) $x_position = $width * str_replace('%','',$x_position)/100;
-		if (strpos($y_position,'%')!==false) $y_position = $height * str_replace('%','',$y_position)/100;
-		
-		if( $this->arrayKeyEquals($opts, 'text_repeat', true) )
-		{
-			$final_text="";
-			$multiplier=4; //lets say 3 for assurance
-			$spaces_between = $this->arrayKeyValue($opts, 'spaces',5);
-			$repeated_per_width = ($width / (strlen($text) * $fontsize)) * $multiplier;
-			$repeated_per_height= ($height / ($fontsize)) * $multiplier;
-			
-			for ($i=0; $i<$repeated_per_height; $i++)
-			{
-				$t= "";
-				for ($j=0; $j<$repeated_per_width; $j++)
-				{
-					$t .= $text . str_repeat(" ", $spaces_between );
-				}
-				$final_text .=$t. "\r\n";
-			}
-			$text = $final_text;
-		}
-
-		if ( $this->arrayKeyEquals($opts, 'method', 'gd') ) 
-		{
-			// FETCH IMAGE & WRITE TEXT
-			$im = imagecreatefrompng($imagePath); 
-			//imagecolorclosest  imagecolorallocate
-			$red = imagecolorclosest($im, 0xFF, 0x00, 0x00);		
-			$black = imagecolorclosest($im, 0x00, 0x00, 0x00);		
-			$white = imagecolorclosest($im, 255, 255, 255);
-			// imagecolorallocate(imagecreatetruecolor(111, 111), 2, 2, 2)
-			//$color = $red;//$red;
-
-			imagefttext($im, $fontsize=$opts['fontsize'], $angle=$opts['angle'], $x_pos=$x_position, $y_pos=$y_position, $color=$opts['color'], $font=$opts['font'], $text);
-			imagealphablending($im, false);
-			imagesavealpha($im, true);
-			if ($resize=false)
-			{
-				$percent=0.5;
-				$new_width = $width * $percent;
-				$new_height = $height * $percent;
-				$image_p = imagecreatetruecolor($new_width, $new_height);
-				imagecopyresampled($im, $im, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
-			}
-
-			// Output and free memory
-			header('Content-type: image/png');
-			imagepng($im);
-			imagedestroy($im);
-		}
-		else
-		{
-			// https://mlocati.github.io/articles/php-windows-imagick.html
-			// https://www.php.net/manual/en/book.imagick.php
-			$Imagick = new \Imagick();
-			$Imagick->readImage($imagePath);
-			$Imagick->setImageFormat( $format = $this->arrayKeyValue($opts,'format','png') );
-			//$Imagick->setCompressionQuality ( 0 );
-			
-			$ImagickDraw = new \ImagickDraw();
-			$ImagickDraw->setFontSize( $fontsize );
-			$ImagickDraw->setTextAntialias ( true );
-			if (array_key_exists('font',$opts) )
-				$ImagickDraw->setFont( $font=$opts['font'] );
-			
-			if ( array_key_exists('stroke', $opts))
-			{
-				$ImagickDraw->setStrokeColor($opts['stroke'][0]);
-				$ImagickDraw->setStrokeWidth($opts['stroke'][1]);
-				$ImagickDraw->setStrokeOpacity($opts['stroke'][2]);
-			}
-			$ImagickDraw->setFillColor($color=$opts['color']);
-			$ImagickDraw->setFillOpacity($opacity=$opts['opacity']);
-			
-			//$ImagickDraw->setGravity( Imagick::GRAVITY_CENTER );
-			$Imagick->annotateImage( $ImagickDraw, $x_pos=$x_position, $y_pos=$y_position, $angle=$opts['angle'], $text);
-
-			if ($opts['echo'])
-			{
-				header( "Content-Type: image/{$Imagick->getImageFormat()}" );
-				echo $Imagick->getImageBlob();
-			}
-			else{
-				$Imagick->writeImage($imagePath);
-			}
-		}
-	}
-	
-
 	
 
 	public static $nodepath='';
@@ -4188,19 +3863,17 @@ class library
 	}
 
 
-	
-
 	#region     ############### ASYNC FUNCTIONS ############### //
 	// https://www.reddit.com/r/PHP/comments/no7abs/
 
 	public $async_methods_available = ['reactphp', 'amphp', 'amphp_parallel', 'spatie','parallel','fibers', 'swoole', 'exec', 'proc-open', 'popen', 'pcntl_fork', '_no_async_' ];
 	// to execute non-blocking async callback-function |  args:   [$func,$args]  where $args is array 
-	public function asyncFunction($callback, $which_method='spatie'){
+	public function async_function($callback, $which_method='spatie'){
 		$method = strtolower($which_method);
 		if ( !in_array( $method, $this->async_methods_available) ) 
 			throw new \Exception( "$method not supported, use from: ". implode(' | ',$this->async_methods_available) );
 		
-		$func_name = 'asyncFunctions_helper_'.$method;
+		$func_name = 'async_functions_helper_'.$method;
 		call_user_func([$this,$func_name],  [ [$callback, $arg1=[]] ] );
 	}
 
@@ -4212,16 +3885,16 @@ class library
 	//   };
 	//
     //   $arr = [ [$func], [$func, "hi"], [$func, "good", "bye"] ] ;
-	//   $helpers->asyncFunctions($arr,'parallel');
+	//   $helpers->async_functions($arr,'parallel');
 
-	public function asyncFunctions($callbacksArray, $which_method='spatie', $blocking=true, $exception_handler=null){
+	public function async_functions($callbacksArray, $which_method='spatie', $blocking=true, $exception_handler=null){
 		$method = strtolower($which_method);
 		if ( !in_array( $method, $this->async_methods_available) ) 
 			throw new \Exception( "$method not supported, use from: ". implode(' | ',$this->async_methods_available) );
 
 		$example = ': CALLBACK & ARGUMENT pair, like [$callback,$arg1,...] or [$callback], where $args behaves like as in call_user_func_array';
 		if ( !is_array($callbacksArray) )
-			throw new \Exception("asyncFunctions was passed incorrect argument. Should be array of $example"); 
+			throw new \Exception("async_functions was passed incorrect argument. Should be array of $example"); 
 		
 		$callbacksArray_NEW =[]; // just add arguments
 	
@@ -4238,12 +3911,12 @@ class library
 				$callbacksArray_NEW[] = [$callback, $args];
 			}
 			else{
-				throw new \Exception("asyncFunctions was passed incorrect array of callback. Each array child should be $example");
+				throw new \Exception("async_functions was passed incorrect array of callback. Each array child should be $example");
 			}
 		}
 		
 		//re-sort
-		$func_name = 'asyncFunctions_helper_'.$method;
+		$func_name = 'async_functions_helper_'.$method;
 
 		call_user_func([$this, $func_name], $callbacksArray_NEW, $exception_handler);
 		return;
@@ -4254,29 +3927,29 @@ class library
 		}
 		else{
 			//foreach($callbacksArray_NEW as $callbackAndArgPair){
-			//	$this->asyncFunction($callbackAndArgPair, $which_method);
+			//	$this->async_function($callbackAndArgPair, $which_method);
 			//}
 		}
 	}
 
 
 	// ##### PARALLEL (requires extension) #####
-    public static function asyncFunctions_helper_parallel($callbacksArray, $exception_handler=null)
+    public static function async_functions_helper_parallel($callbacksArray, $exception_handler=null)
     {
 		foreach( $callbacksArray as $callback_arg_pair){
 			//\parallel\run($callback = $callback_arg_pair[0], $args = $callback_arg_pair[1] ); 
 			//$r1 = new \parallel\Runtime();$r1->run
-			self::asyncFunction_parallel($callback = $callback_arg_pair[0], $args = $callback_arg_pair[1]);
+			self::async_function_parallel($callback = $callback_arg_pair[0], $args = $callback_arg_pair[1]);
 		}
     } 
-    public static function asyncFunction_parallel($callback, $args=[])
+    public static function async_function_parallel($callback, $args=[])
     {
 		\parallel\run($callback, $args); 
     } 
 
 
 	// ##### SPATIE #####  [ https://github.com/spatie/async/issues/120 ]
-    public static function asyncFunctions_helper_spatie($callbacksArray, $exception_handler=null)
+    public static function async_functions_helper_spatie($callbacksArray, $exception_handler=null)
     {
 		if ( ! self::spatieSupported()  ){
 			$msg = "Spaties needed extensions are not enabled: pcntl & posix";
@@ -4300,7 +3973,7 @@ class library
 	
 	// ##### SWOOLE (requires extension) #####
 	// use advanced usage: https://www.swoole.co.uk/docs/modules/swoole-coroutine-run
-    public static function asyncFunctions_helper_swoole($callbacksArray, $exception_handler=null)
+    public static function async_functions_helper_swoole($callbacksArray, $exception_handler=null)
     {
 		// needs to be checked ( as: https://www.swoole.co.uk/docs/modules/swoole-coroutine-run )
 		if (self::swoole_installed() && function_exists('\\Swoole\\Coroutine\\run') )
@@ -4308,19 +3981,19 @@ class library
 			if ( !self::swoole_inside_coroutine() ) 
 			{
 				\Swoole\Coroutine\run(function() use ($callbacksArray,$exception_handler)  {
-					self::asyncFunctions_helper_swooleGoTrigger($callbacksArray,$exception_handler);
+					self::async_functions_helper_swooleGoTrigger($callbacksArray,$exception_handler);
 				});
 			}
 			else{ 
-				self::asyncFunctions_helper_swooleGoTrigger($callbacksArray,$exception_handler);
+				self::async_functions_helper_swooleGoTrigger($callbacksArray,$exception_handler);
 			} 
 		}
 		else{
 			var_dump("Swoole not installed, running plain function");
-			self::asyncFunctions_helper__no_async_($callbacksArray);
+			self::async_functions_helper__no_async_($callbacksArray);
 		}
     }  
-    private static function asyncFunctions_helper_swooleGoTrigger($callbacksArray, $exception_handler=null)
+    private static function async_functions_helper_swooleGoTrigger($callbacksArray, $exception_handler=null)
 	{
 		//$wg = new \Swoole\Coroutine\WaitGroup();
 		foreach( $callbacksArray as $callback_arg_pair){
@@ -4356,7 +4029,7 @@ class library
 	}
 
 	// ##### AMPHP #####
-	public static function asyncFunctions_helper_reactphp($callbacksArray, $exception_handler=null){
+	public static function async_functions_helper_reactphp($callbacksArray, $exception_handler=null){
 		$loop = \React\EventLoop\Factory::create();
 		$promise = new \React\Promise\Promise(function($resolve){
 		});
@@ -4380,7 +4053,7 @@ class library
 
 
 	// ##### AMPHP #####
-	public static function asyncFunctions_helper_amphp($callbacksArray, $exception_handler=null){
+	public static function async_functions_helper_amphp($callbacksArray, $exception_handler=null){
 
 		$promises = [];
 		\Amp\Loop::run(function () use($callbacksArray) { 
@@ -4406,7 +4079,7 @@ class library
 	}
 
 	// https://github.com/amphp/parallel-functions  && https://github.com/amphp/parallel-functions/issues/28
-	public static function asyncFunctions_helper_amphp_parallel($callbacksArray, $exception_handler=null){
+	public static function async_functions_helper_amphp_parallel($callbacksArray, $exception_handler=null){
 		foreach($callbacksArray as $callback_arg_pair) {
 			//$pool = new \Amp\Parallel\Worker\DefaultPool();
 			$callbacks[] = call_user_func_array(\Amp\ParallelFunctions\parallel($callback_arg_pair[0]), $callback_arg_pair[1]); //, $pool
@@ -4421,13 +4094,13 @@ class library
 	// https://stackoverflow.com/questions/222414/asynchronous-shell-exec-in-php
 	// https://stackoverflow.com/questions/45953/php-execute-a-background-process#45966
 	// https://stackoverflow.com/questions/2212635/best-way-to-manage-long-running-php-script !!
-	public static function asyncFunctions_helper_exec($command = null, $with_php=false){
+	public static function async_functions_helper_exec($command = null, $with_php=false){
 		// moved to separate file, due to WP restrictions
-		return self::asyncFunctions_helper_exec2($command, $with_php);
+		return self::async_functions_helper_exec2($command, $with_php);
 	}
 
 	// no async, just default fallback
-    public static function asyncFunctions_helper__no_async_($callbacksArray, $exception_handler=null)
+    public static function async_functions_helper__no_async_($callbacksArray, $exception_handler=null)
     {		
 		self::call_user_funcs($callbacksArray);
     } 
@@ -4439,19 +4112,6 @@ class library
     }
 	#endregion
 
-
-	
-
-
-	public function resizeImage($imagePath, $width, $height=0, $auto_proportion=true, $filter=false, $blur=1)
-	{
-		$Imagick = new \Imagick();
-		$Imagick->readImage($imagePath);
-		//$Imagick->setImageFormat( $format = $this->arrayKeyValue($opts,'format','png') );
-		$filter= !$filter ? \Imagick::FILTER_LANCZOS : $filter;  //FILTER_LANCZOS
-		$Imagick->resizeImage($width, $height, $filter, $blur, $auto_proportion );
-		$Imagick->writeImage($imagePath);
-	}
 	
 	// get-timezones : pastebin_com/4tXjgY7B
 
@@ -4463,7 +4123,7 @@ class library
 		return $new_object;
 	}
 
-	public function convertClockToSeconds($input="4h", $minute_symbol="m", $month_symbol="M")
+	public function convert_timeframe_into_seconds($input="4h", $minute_symbol="m", $month_symbol="M")
 	{
 		$array=['s'=>1,'S'=>1,     'm'=>60,    'h'=>3600,'H'=>3600,     'd'=>86400,'D'=>86400,     'w'=>604800,'W'=>604800,     'M'=>2678400];//31days
 		foreach($array as $key=>$value)
@@ -4473,18 +4133,13 @@ class library
 		return $input;
 	}
 	
-	public function dieMessage($txt){
+	public function die_pretty($txt){
 		echo 
 		'<div style="padding: 50px; margin:100px auto; width:50%; text-align:center; line-height: 1.4; display:flex; justify-content:center; flex-direction:column; font-family: cursive; font-size: 1.7em; box-shadow:0px 0px 10px gray; border-radius: 10px;">'.
 			'<div><h3>'.$txt.'</h3></div>'.
 		'</div>';
 		exit;
 	}
-
-
-	public function Return_If_Isset($var){ if (isset($var)) { return $var; }    else { return false; }  }
-	public function Return_If_Not_Empty($var){ if (!empty($var)) { return $var; }    else { return false; }  }
-	public function Return_If_Array_Key($array, $keyname){ if (array_key_exists($keyname, $array)) { return $array[$keyname]; }    else { return false; }  }
 
 	// custom always-loaded scripts 
 	// my_script_url("css|js",  "public|admin")
@@ -4570,22 +4225,7 @@ class library
 	public function filedate($file){
 		return date("Y-M-D--H-i-s", filemtime($file) ); 
 	}
-
-	public function TRANSLL($phraze,$LNG=false, $desired=array())	{ return apply_filters('MLSS', $phraze, ($LNG ? $LNG: (defined('LNG') ? LNG : '' )  ),  $desired    );   }
-
-	public function MY_LANGSS(){
-		if (!function_exists('LANGS__MLSS')){
-			if(!empty($GLOBALS['my_custom_langs'])) return $GLOBALS['my_custom_langs'];
-			if(defined('ERROR_SHOWN__MLSS') || DISABLE_MLSS_ERROR ) {return array();}	
-
-			$xx344=debug_backtrace();
-				echo '<script>alert(\'plugin "Multi-Language Site (basis)" seems not installed. please install it.\r\n\r\n\ File:'. $xx344[0]['file'] .' \r\n\ line:'.$xx344[0]['line'].'\');</script>';  
-				if (!is_admin() && !in_array($GLOBALS['pagenow'], array('wp-login.php', 'wp-register.php'))) {die('error_45y4e5ge4g'); }	 define('ERROR_SHOWN__MLSS',1);
-		}
-		else{  return LANGS__MLSS();  }
-	}
-	
-	 
+  
 	//if ( !$this->above_version('5.4') ) { echo("php_version is ". PHP_VERSION ." (quite old). HIGHLY recomended to update to higher version, or this program might not funciton normally ". __FILE__ ); }
 	public function above_version($version= "5.4"){
 		return version_compare(phpversion(), $version, '>=');
@@ -4593,22 +4233,21 @@ class library
 
 	public function noindex_meta_tag() { return '<meta name="robots" content="noindex, nofollow">'; }
 
-	public function valueToString( $value ){
-		return is_bool($value) ? ($value ? 'true' : 'false' ) : strip_tags(  $value ) ;
-	}
-	public function stringToValue( $value ){
-		return is_bool($value) ? $value : ( !is_string($value) ?  $value : ( $value =='true' ? true : (  $value =='false' ? false : $value) ) );
-	}
-
     public function randomId($divider="_"){ return "K".time() . $divider . rand(1,9).rand(0,9999999999999); }
 
-
-	
-	
 	// #####################################
 	//check either GET or argv (note, in argv, the parameters should be quoted, like: 
-	//       * * * * *  /usr/bin/php -q /var/www/example/wp-cron.php "cron_cycle=3&param=1"	
-	public static function Argv($key='', $default='')
+	//       * * * * *  /usr/bin/php -q /var/www/example/wp-cron.php "cron_cycle=3&param=1"
+	public static function argvs($key='', $default='')
+	{
+		global $argv;
+		$array = [];
+		if (!empty($argv[1])) {
+			parse_str($argv[1], $array);
+		}
+		return $array;
+	}
+	public static function argv($key='', $default='')
 	{
 		global $argv;
 		$array = [];
@@ -4617,12 +4256,12 @@ class library
 		}
 		return empty($key) ? $array : ( array_key_exists($key, $array) ? $array[$key] : $default);
 	}
-	public function Get($key='', $default='')
+	public function get($key='', $default='')
 	{
 		return empty($key) ? $_GET : ( array_key_exists($key, $_GET) ? $_GET[$key] : $default);
 	}
 	// THIS IS ALWAYS SANITIZED IN IMPLEMENTATIONS
-	public function Post($key='', $parsePhpInput=true){
+	public function post($key='', $parsePhpInput=true){
 		if (!empty($_POST)) {
 			$array = $_POST;
 		} else {
@@ -4644,7 +4283,7 @@ class library
 		return $this->POST();
 	}
 	
-	public function ArgvGet($key='', $default=null)
+	public function argv_or_get($key='', $default=null)
 	{
 		global $argv;
 		$array = [];
@@ -4656,7 +4295,7 @@ class library
 		}
 		return !empty($key) ? $this->array_value($array,$key,$default) : $array;
 	}
-	public function ArgvIsSet($key)
+	public function argv_is_set($key)
 	{
 		global $argv;
 		$array = [];
@@ -4665,7 +4304,7 @@ class library
 		}
 		return array_key_exists($key,$array);
 	}
-	public function ArgvGetIsSet($key)
+	public function argv_or_get_is_set($key)
 	{
 		global $argv;
 		$array = [];
@@ -4678,23 +4317,27 @@ class library
 		return array_key_exists($key,$array);
 	}
 
-	public static function ArgvFile()
+	public static function argv_called_file()
 	{
 		global $argv;
 		return !empty($argv[0]) ? $argv[0] : '';
 	}
 
-	public static function IsCron(){ return self::IsCli(); }
-	public static function IsCli(){
+	public static function is_cron(){ return self::is_cli(); }
+	public static function is_cli(){
 		try{
+			if( defined('STDIN') ) return true;  
+			if( empty($_SERVER['REMOTE_ADDR']) && !isset($_SERVER['HTTP_USER_AGENT']) && count($_SERVER['argv']) > 0)  return true; 
 			$sapi_type = php_sapi_name();
 			return (substr($sapi_type, 0, 3) == 'cli' || empty($_SERVER['REMOTE_ADDR']));
 		}
 		catch(\Exception $ex){
-			return false;
+			
 		}
+		return false;
 	}
 	
+
 	public static function array_to_argv($array=null)
 	{
 		$str = http_build_query($array);
@@ -4799,11 +4442,7 @@ class library
 		return $output;
 	}
 
-
-
-	// 	<!-- GEORGIAN automatic keyboard while typing in SEARCH --> <script type="text/javascript" src="'. $this->baseURL .'/library/js/geokbd.js"></script>
-
-	public function arrayFieldsResort($ar)
+	public function array_sanitize_text_field($ar)
 	{
 		$new=[];
 		foreach($ar as $key=>$val)
@@ -4819,8 +4458,8 @@ class library
 		return $n[1];
 	}
 	
-	
-	public function shapeSpace_allowed_html() {
+	// shapeSpace
+	public function allowed_html_tags() { 
 
 		$allowed_tags = [
 			'a' => [
@@ -4895,7 +4534,7 @@ class library
 		//	php_flag log_errors on
 		//	php_value error_log /home/FTP_username/public_html/error_log.txt
 		ini_set("log_errors", 1);
-		ini_set("error_log", $path ? $path : $_SERVER['DOCUMENT_ROOT']."/zzz___php-my-errors_".$this->my_site_variables__secret('rand_name', RandomString(11)).".log");
+		ini_set("error_log", $path ? $path : $_SERVER['DOCUMENT_ROOT']."/zzz___php-my-errors_".$this->my_site_variables__secret('rand_name', random_string(11)).".log");
 		//error_log( "Hello, errors!" );	
 		if (!is_null($callback)) set_error_handler($callback);
 	}
@@ -4915,39 +4554,24 @@ class library
 		header("Content-type: application/javascript;  charset=utf-8");
 	}
 	
-	public function is_cli()
-	{
-		if( defined('STDIN') ) return true;  
-		if( empty($_SERVER['REMOTE_ADDR']) && !isset($_SERVER['HTTP_USER_AGENT']) && count($_SERVER['argv']) > 0)  return true; 
-		return false;
-	}
- 
-	
-	public function setLogDir($dir)
+	public function set_log_dir($dir)
 	{
 		$this->logDir = $dir;
 		$this->mkdir($this->logDir);
 	}
-	
-	
-	
-	
-	public function formFromArray($value, $fullKeyName='', $replace_spaces=false, $url='')
+
+	public function form_from_array($value, $fullKeyName='', $replace_spaces=false, $url='')
 	{
 		?>
 		<form action="<?php echo $url;?>" method="POST">
-		<?php $this->input_fields_from_array_RECURSIVE2($value, $fullKeyName, $replace_spaces); ?>
+		<?php $this->input_fields_from_array_recursive2($value, $fullKeyName, $replace_spaces); ?>
 		<input type="submit"></form>
 		<?php 
 	}
 
-
-
-
-
 	public $arFieldRecRastKey="";
 	public $arFieldAutoresize=true;
-	public function input_fields_from_array_RECURSIVE2($value, $fullKeyName='', $replace_spaces=false, $cycle=0){
+	public function input_fields_from_array_recursive2($value, $fullKeyName='', $replace_spaces=false, $cycle=0){
 		$current_key = preg_replace('/(.*)\[(.*?)\]/','$2', $fullKeyName);  //i.e. cc from: aa[bb][cc]
 		$addButtonKeyName = "_ADD_BUTTON_";
 
@@ -5061,7 +4685,7 @@ class library
 				}
 				
 				$this->arFieldRecRastKey=$keyname1;
-				$this->input_fields_from_array_RECURSIVE2($value1, $newKeyNm,  $replace_spaces, $cycle+1);
+				$this->input_fields_from_array_recursive2($value1, $newKeyNm,  $replace_spaces, $cycle+1);
 				echo '</div>';
 			}
 			echo '</div>';
@@ -5081,10 +4705,6 @@ class library
 	}
 	 
 
-	
-	
-	
-	
 	public function move_folder_contents($from, $to)
 	{
 		foreach( glob($from ."/*") as $each)
@@ -5100,10 +4720,7 @@ class library
 			}
 		}
 	}
-		
-		
-		
-		
+
 	public function js_debugmode($name='debugmode')
 	{
 		if ( ! defined('PUVOX_js_debugmode') )
@@ -5115,10 +4732,6 @@ class library
 		}
 	}
 	
-	
-	
-	
-	
 
 	// REGEXES
 	public function preg_replace_if_inside($str, $phrase, $start, $end)
@@ -5126,178 +4739,12 @@ class library
 		return preg_replace("/(?<=". preg_quote($start).")(.*?|)". $phrase ."(.*?|)(?=".preg_quote($end).")/si", '', $str);
 	}
 		
-	public function splitBy_X_NotInside_YZ($str, $by, $y, $z) //y&z: not inside
+	public function split_by_X_not_inside_YZ($str, $by, $y, $z) //y&z: not inside
 	{ 
 		return preg_split( '/'.$by.'+(?=(?:(?:[^'.$y.']*"){2})*[^'.$z.']*$)/si', $str );
 	}
-	public function splitBy_X_NotInside($content, $by, $array, $ignore_whitespaces=true) //y&z: not inside
-	{ 
-		$lettersArray	= str_split($content);
-		$result	=[];
-		//
-		$lastChar_       ='';
-		$escapeChar_     ='\\';
-		$currentStr      ='';
-		$currentStr_last ='';
-		$is_Active = [];
-		$quoteDoubleId = urlencode( base64_encode( implode("_", ['"','"'] ) ) );
-		$quoteSingleId = urlencode( base64_encode( implode("_", ["'","'"] ) ) );
-		foreach($array as $eachPair)
-		{
-			$eachPairString = urlencode(base64_encode(implode("_",$eachPair)));
-			$is_Active[$eachPairString] = false;
-		}
-		
-		$active_count = 0;
-		foreach($lettersArray as $char_)
-		{
-			$currentStr 		.= $char_;
-			//
-			//if last char was escape, we can ignore current one
-			if ($lastChar_ != $escapeChar_)
-			{ 
-				foreach($array as $eachPair)
-				{
-					$eachPairString = urlencode( base64_encode( implode("_",$eachPair) ) );
-					//skip quote inside quotes:
-					if ($char_ == '"' && $is_Active[$quoteSingleId] )
-						continue;
-					if ($char_ == "'" && $is_Active[$quoteDoubleId] )
-						continue;
-				
-					$char_START		= $eachPair[0];
-					$char_END		= $eachPair[1];
-					$sameChars		= $char_START==$char_END;
-					// we need different cases:
-					if ($sameChars)
-					{
-						if ($char_ == $char_START)
-						{
-							if ( $is_Active[$eachPairString] )
-								{  $is_Active[$eachPairString]=false; $active_count--; }
-							else 					
-								{  $is_Active[$eachPairString]=true; $active_count++; }
-						}							
-					}
-					else{
-						if ( $char_ == $char_START && !$is_Active[$eachPairString])
-						{
-							$is_Active[$eachPairString] = true;
-							$active_count++;
-						}
-						else if ( $char_ == $char_END  && $is_Active[$eachPairString] )
-						{
-							$is_Active[$eachPairString] = false;
-							$active_count--;
-						}
-					}
-				}
-			}
-			//
-			if ( $active_count==0 )
-			{
-				$currLength = strlen($currentStr);
-				if (  $this->endsWith($currentStr, $by) )
-				{
-					if ( $ignore_whitespaces && empty(trim($currentStr_last)) ){
-						//don't add
-					}
-					else{
-						$result[] = trim($currentStr_last);
-					}
-					$currentStr = '';
-				}
-			}
-			$currentStr_last	= $currentStr;
-			$lastChar_			= $char_;
-		} 
-		if (!empty(trim($currentStr))) {
-			$result[] = trim($currentStr);
-		}
-		return $result;
-	}
-	public function replaceIfNotInside($content, $what, $with, $array, $ignore_whitespaces=true) //y&z: not inside
-	{ 
-		$lettersArray	= str_split($content);
-		//
-		$lastChar_       ='';
-		$escapeChar_     ='\\';
-		$currentStr      ='';
-		$currentStr_last ='';
-		$is_Active = [];
-		$quoteDoubleId = urlencode( base64_encode( implode("_", ['"','"'] ) ) );
-		$quoteSingleId = urlencode( base64_encode( implode("_", ["'","'"] ) ) );
-		foreach($array as $eachPair)
-		{
-			$eachPairString = urlencode(base64_encode(implode("_",$eachPair)));
-			$is_Active[$eachPairString] = false;
-		}
-		
-		$active_count = 0;
-		foreach($lettersArray as $char_)
-		{
-			$currentStr 		.= $char_;
-			//if last char was escape, we can ignore current one
-			if ($lastChar_ != $escapeChar_)
-			{
-				foreach($array as $eachPair)
-				{
-					$eachPairString = urlencode( base64_encode( implode("_",$eachPair) ) );
-					//skip quote inside quotes:
-					if ($char_ == '"' && $is_Active[$quoteSingleId] )
-						continue;
-					if ($char_ == "'" && $is_Active[$quoteDoubleId] )
-						continue;
-				
-					$char_START		= $eachPair[0];
-					$char_END		= $eachPair[1];
-					$sameChars		= $char_START==$char_END;
-					// we need different cases:
-					if ($sameChars)
-					{
-						if ($char_ == $char_START)
-						{
-							if ( $is_Active[$eachPairString] )
-								{  $is_Active[$eachPairString]=false; $active_count--; }
-							else 					
-								{  $is_Active[$eachPairString]=true; $active_count++; }
-						}							
-					}
-					else{
-						if ( $char_ == $char_START && !$is_Active[$eachPairString])
-						{
-							$is_Active[$eachPairString] = true;
-							$active_count++;
-						}
-						else if ( $char_ == $char_END  && $is_Active[$eachPairString] )
-						{
-							$is_Active[$eachPairString] = false;
-							$active_count--;
-						}
-					}
-				}
-			}
-			//
-			if ( $active_count==0 )
-			{
-				$currLength = strlen($currentStr);
-				if (  $this->endsWith($currentStr, $what) )
-				{
-					if ( $ignore_whitespaces && empty(trim($currentStr_last)) ){
-						//don't add
-					}
-					else{
-						$currentStr = substr($currentStr, 0, -(strlen($what)) ) . $with;
-					} 
-				}
-			}
-			$currentStr_last	= $currentStr;
-			$lastChar_			= $char_;
-		}
-		return $currentStr;
-	}
-	
-	public function getFromX_tillY_NotInside($content, $from, $till, $array, $regex_index=0, $remove_outside=true) 
+
+	public function get_from_X_till_Y_not_inside($content, $from, $till, $array, $regex_index=0, $remove_outside=true) 
 	{
 		$from_ = $from; //this.escapeRegExp(from);
 		preg_match( '/'. $from_ ."(.*)/si", $content, $matches );
@@ -5306,7 +4753,7 @@ class library
 		{
 			$regex_index_final = $regex_index+1;
 			$foundPart= $matches[$regex_index_final];
-			$splits = $this->splitBy_X_NotInside($foundPart, $till, $array);
+			$splits = $this->split_by_X_not_inside($foundPart, $till, $array);
 			$result = trim($splits[0]);
 		}
 		return $result;
@@ -5521,14 +4968,29 @@ class library
 		return ["value"=>$lowest, "index"=>$index];
 	}
 	
-	
-	
-	public function zip_folder($folderPath, $zip_filepath)
-	{
-		new tempclass_GoodZipArchive($folderPath, $zip_filepath);
+	public function zip_folder ($input_folder, $output_zip_file) {
+		$zipClass = new ZipArchive();
+		if($input_folder !== false && $output_zip_file !== false)
+		{
+			$res = $zipClass->open($output_zip_file, \ZipArchive::CREATE);
+			if($res === TRUE)   {
+				// Add a Dir with Files and Subdirs to the archive
+				$foldername = basename($input_folder);
+				$zipClass->addEmptyDir($foldername);
+				$foldername .= '/';         $input_folder .= '/';
+				// Read all Files in Dir
+				$dir = opendir ($input_folder);
+				while ($file = readdir($dir))    {
+					if ($file == '.' || $file == '..') continue;
+					// Rekursiv, If dir: GoodZipArchive::addDir(), else ::File();
+					$do = (filetype( $input_folder . $file) == 'dir') ? 'addDir' : 'addFile';
+					$zipClass->$do($input_folder . $file, $foldername . $file);
+				}
+				$zipClass->close(); 
+			}
+			else   { exit ('Could not create a zip archive, migth be write permissions or other reason. Contact admin.'); }
+		}
 	} 
-
- 
 
 	public function init_defaults()
 	{
@@ -5575,8 +5037,8 @@ class library
 		{
 			$this->homeFOLDER 		= $args['homeFOLDER'];
 			$this->homeURL 			= $this->domain.$this->homeFOLDER;
-			$this->doc_root_real 	= $this->slashesForward(str_replace( $this->homeFOLDER,'',  $this->slashesForward($this->moduleDIR) )); // even for symlinked;
-			$this->moduleURL		= str_replace($this->doc_root_real,'',  $this->slashesForward($this->moduleDIR)) ;
+			$this->doc_root_real 	= $this->replace_slashes_forward(str_replace( $this->homeFOLDER,'',  $this->replace_slashes_forward($this->moduleDIR) )); // even for symlinked;
+			$this->moduleURL		= str_replace($this->doc_root_real,'',  $this->replace_slashes_forward($this->moduleDIR)) ;
 		}
 		// else, if this class is used as plugin class (used mostly by Puvox.Software)
 		else
@@ -5589,13 +5051,13 @@ class library
 			$this->plugin_entryfile	= defined( $this->module_NAMESPACE.'\\PLUGIN_ENTRY_FILE') ? constant($this->module_NAMESPACE.'\\PLUGIN_ENTRY_FILE') : $this->moduleFILE;
 		} 
 		$this->httpsReal		= preg_replace('/(http(s|):\/\/)(.*)/i', '$1', $this->homeURL);
-		$this->domainReal		= $this->getDomain($this->homeURL);  $this->domainNaked=$this->domainReal;
+		$this->domainReal		= $this->get_domain_from_url($this->homeURL);  $this->domainNaked=$this->domainReal;
 		$this->domain			= $this->httpsReal.$this->domainReal;
 		$this->domain_schemeless= '//'.$this->domainReal;
-		$this->siteslug			= str_ireplace('.','_',   $this->domainReal);
+		$this->site_slug			= str_ireplace('.','_',   $this->domainReal);
 		$this->urlAfterHome		= substr($this->requestURL, strlen($this->homeFOLDER) );
 		$this->pathAfterHome	= parse_url($this->urlAfterHome, PHP_URL_PATH);
-		$this->homeUrlStripped	= $this->stripUrlPrefixes($this->homeURL); 
+		$this->homeUrlStripped	= $this->remove_http_www($this->homeURL); 
 
 		$this->baseFILE			= $this->moduleFILE;								//
 		$this->baseDIR			= $this->moduleDIR.'/';								//
@@ -5672,28 +5134,6 @@ class library
 		//return file_put_contents($path, $content, ($third==null ? LOCK_EX : $third | LOCK_EX) ); 
 	}
 	
-	public function fileNotContainsWrite($path, $text)
-	{
-		$contains=false;
-		if(!file_exists($path))
-		{
-			$contains=false;
-		}
-		else{
-			$content = $this->file_get_contents($path);
-			if ( strpos($content, $text)===false )
-			{
-				$contains=false;
-				$this->file_put_contents($path, $text);
-			}
-			else
-			{
-				$contains=true;
-			}
-		}
-		return $contains;
-	}
-
 	public function file_put_contents_if_not_exists($path, $text)
 	{
 		if(!file_exists($path))
@@ -5736,7 +5176,7 @@ class library
 		if(!$command){
 			throw new \Exception("No command given");
 		}
-		$cmd = self::asyncFunctions_helper_exec_command($command, $with_php);
+		$cmd = self::async_functions_helper_exec_command($command, $with_php);
 		// If windows
 		if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
 			return system( $cmd );
@@ -5747,7 +5187,7 @@ class library
 	}
 	
 
-    public function PhpPath($priority_1='phpbrew',  $priority_2='php', $default_to_available=true){
+    public function php_path($priority_1='phpbrew',  $priority_2='php', $default_to_available=true){
         $res = $this->exec('whereis php');
 		$path=''; 
 		$expls =explode(':', $res);
@@ -5794,17 +5234,14 @@ class library
 		return $path;
 	}
 
-	public static function CpusAmount(){
+	public static function cpus_amount(){
 		return substr_count((string)@file_get_contents('/proc/cpuinfo'),"\nprocessor")+1;
 	}
-	public static function CpuNumber(){
+	public static function cpu_number(){
 		return (int) trim(str_ireplace('PSR','', shell_exec('ps -o psr -p '.getmypid() ) ) );
 	}
-	public static function CpuProcess(){
+	public static function cpu_process(){
 		return self::CpuNumber() .":::". getmypid();
-	}
-	public static function CpuInfoMsg(){
-		return "[Running on CPU#".(self::CpuNumber()+1) ."/".self::CpusAmount() ."]";
 	}
 
 	public function helper_redis_try_os_start(){
@@ -5814,7 +5251,7 @@ class library
 		}
 	}
 
-	public static function asyncFunctions_helper_exec_command($command = null, $with_php=false){
+	public static function async_functions_helper_exec_command($command = null, $with_php=false){
 		// If windows
 		if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
 			$res= ($command.' > NUL');
@@ -5831,7 +5268,7 @@ class library
 
 
 	//  : $this->fileUrl($filename)
-	public function filesContentUrl($filename, $files=[], $type="style|script|"){ 
+	public function files_content_url($filename, $files=[], $type="style|script|"){ 
 		$out = $this->filesContents($files, false);
 		$filename_full = $this->moduleDIR . $filename;
 		$write = true;
@@ -5869,7 +5306,7 @@ class library
 	}
 
 
-	public function DownloadFile($filepath=true, $value=null, $output_file_name=''){
+	public function download_file($filepath=true, $value=null, $output_file_name=''){
 		$content= $filepath ? $this->file_get_contents($value) :  $value;
 		ob_get_clean();
 		header('Content-Description: File Transfer');
@@ -5883,6 +5320,28 @@ class library
 		exit;
 	}
 
+	// only for explicit use. Nowhere being used
+	public function download_filee( $allowed_directory="/wp-content/uploads/myFiles", $filename=''  )
+	{
+		$filename = basename($filename);
+		$path = ABSPATH. ($FullFile= $allowed_directory.'/'.$filename);
+		//when file doesnt exist
+		if (!file_exists($path)){ echo '<b style="background:red;">error_750 [cant detect location 53424!!]</b><pre>'; $this->var_dump($FullFile);echo '</pre>';exit;}
+		
+		// Download
+		ob_get_clean();		ini_set('auto_detect_line_endings', true);
+		header("Pragma: public");header("Expires: 0");
+		header('Content-Type: application/force-download'); //application/octet-stream
+		header("Content-Description: File Transfer");
+		header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
+		header("Cache-Control: public");
+		header('Content-Length: '.filesize($path));
+		header("Content-Disposition: attachment; filename=\"".basename($path)."\"");
+		readfile($path);
+		exit;
+	}
+
+	
 
 	public function check_analytics()
 	{
@@ -5956,17 +5415,17 @@ class library
 
 
 		
-	/**
-	 *  An example CORS-compliant method.  It will allow any GET, POST, or OPTIONS requests from any
-	 *  origin.
-	 *
-	 *  In a production environment, you probably want to be more restrictive, but this gives you
-	 *  the general idea of what is involved.  For the nitty-gritty low-down, read:
-	 *
-	 *  - https://developer.mozilla.org/en/HTTP_access_control
-	 *  - https://fetch.spec.whatwg.org/#http-cors-protocol
-	 *
-	 */
+	// **
+	//  *  An example CORS-compliant method.  It will allow any GET, POST, or OPTIONS requests from any
+	//  *  origin.
+	//  *
+	//  *  In a production environment, you probably want to be more restrictive, but this gives you
+	//  *  the general idea of what is involved.  For the nitty-gritty low-down, read:
+	//  *
+	//  *  - https://developer.mozilla.org/en/HTTP_access_control
+	//  *  - https://fetch.spec.whatwg.org/#http-cors-protocol
+	//  *
+	//  *
 	public function cors_enable() {
 		
 		// Allow from any origin
@@ -5995,7 +5454,7 @@ class library
 	}
 
 
-	public function loadJquery( $id )
+	public function load_jquery( $id )
 	{ ?> <script>
 		PuvoxLibrary.loadJquery=function()
 		{
@@ -6021,28 +5480,6 @@ class library
 			}
 		}
 	}
-	
-	// only for explicit use. Nowhere being used
-	public function Download_Filee( $allowed_directory="/wp-content/uploads/myFiles", $filename=''  )
-	{
-		$filename = basename($filename);
-		$path = ABSPATH. ($FullFile= $allowed_directory.'/'.$filename);
-		//when file doesnt exist
-		if (!file_exists($path)){ echo '<b style="background:red;">error_750 [cant detect location 53424!!]</b><pre>'; $this->var_dump($FullFile);echo '</pre>';exit;}
-		
-		// Download
-		ob_get_clean();		ini_set('auto_detect_line_endings', true);
-		header("Pragma: public");header("Expires: 0");
-		header('Content-Type: application/force-download'); //application/octet-stream
-		header("Content-Description: File Transfer");
-		header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
-		header("Cache-Control: public");
-		header('Content-Length: '.filesize($path));
-		header("Content-Disposition: attachment; filename=\"".basename($path)."\"");
-		readfile($path);
-		exit;
-	}
-
 	
 	public function include_wp($shortInit=false, $dir=false){
 		if($shortInit)  { define ("SHORTINIT",true); }
@@ -6205,7 +5642,7 @@ class library
 	public $autogenerated_scripts_subdir='';
 	
 	// $this->helpers->autogenerated_scripts_REGISTER("cache/");
-	public function autogenerated_scripts_REGISTER($subdir="") 
+	public function autogenerated_scripts_register($subdir="") 
 	{
 		add_action( 'wp_enqueue_scripts',		[$this,'autogenerated_scripts_enqueue'], 999 );
 		add_action( 'admin_enqueue_scripts',	[$this,'autogenerated_scripts_enqueue'], 999 );
@@ -6265,7 +5702,7 @@ class library
 	}
 	// ################
 
-	public function createHtaccessDirDisableBrowsing($dir)
+	public function disable_dir_browsing_in_htaccess($dir)
 	{
 		$htaccess = $dir .'/.htaccess';
 		$myCont = 
@@ -6302,7 +5739,7 @@ class library
 
 	// Create safe logs to analyze attacks
 	// Dont' be afraid - this function is not used anywhere in any of plugins (it is only usable & available if called directly in custom tests by developers, to temporarily monitor any  _POST attacks)
-	public function SaveLogs($dirname= false) 
+	public function save_logs($dirname= false) 
 	{
 		$currUrl = $_SERVER['REQUEST_URI'];
 		$dir = $dirname ? $dirname : $this->baseDIR .'/___l';	if (!is_dir($dir)) {  mkdir($dir, 0755, true); }
@@ -6343,12 +5780,9 @@ class library
 		}
 	}
 
-	
-	
-	
-	
+ 
 	// for fast requests on same server ( https://stackoverflow.com/questions/3787002/reusing-the-same-curl-handle-big-performance-increase )
-		public function curlFast($url, $params=[]){
+		public function curl_fast($url, $params=[]){
 			if (!property_exists($this,'curlFastInited'))
 			{
 				$c = curl_init();  
@@ -6719,8 +6153,7 @@ class library
 		//           ['raw_url']  -----> https://gist.github usercontent.com/anonymous/0f62b7edebd1057d67a/raw/b004869d73c82d0d1/file1.txt
 		//           ['url']      -----> .... just contains some info about the api call
 	}
-	
-	
+
 	
 	public static function get_remote_data_callback($url, $post_paramtrs=null,  	$curl_opts=[])	
 	{ 
@@ -6791,7 +6224,7 @@ class library
 	// this function can be used onto already OBTAINED-DATA, to convert the "relative" paths to the external domain automatically:
 	//														i.e.:   src="./file.jpg"  ----->  src="http://example.com/file.jpg" 
 	// url_corrections_for_content_HELPER
-	public function fixed_domain_HELPER( $content, $domain_or_url ) {  
+	public function fixed_domain_helper( $content, $domain_or_url ) {  
 		$GLOBALS['rdgr']['parsed_url']			= parse_url($domain_or_url);
 		$GLOBALS['rdgr']['urlparts']['domain_X']= $GLOBALS['rdgr']['parsed_url']['scheme'].'://'.$GLOBALS['rdgr']['parsed_url']['host'];
 		$GLOBALS['rdgr']['urlparts']['path_X']	= stripslashes(dirname($GLOBALS['rdgr']['parsed_url']['path']).'/'); 
@@ -7721,40 +7154,10 @@ class tempclass_cache_file {
 
 } // tempclass_cache_file
 
+
  
-class tempclass_GoodZipArchive extends \ZipArchive {
-	public function __construct($a=false, $b=false) { $this->create_func($a, $b);  }
 
-	public function create_func($input_folder=false, $output_zip_file=false)
-	{
-		if($input_folder !== false && $output_zip_file !== false)
-		{
-			$res = $this->open($output_zip_file, \ZipArchive::CREATE);
-			if($res === TRUE)   { $this->addDir($input_folder, basename($input_folder)); $this->close(); }
-			else                { echo 'Could not create a zip archive, probably write permissions. Contact Admin.'; }
-		}
-	}
-
-	// Add a Dir with Files and Subdirs to the archive
-	public function addDir($location, $name) {
-		$this->addEmptyDir($name);
-		$this->addDirDo($location, $name);
-	}
-
-	// Add Files & Dirs to archive 
-	private function addDirDo($location, $name) {
-		$name .= '/';         $location .= '/';
-		// Read all Files in Dir
-		$dir = opendir ($location);
-		while ($file = readdir($dir))    {
-			if ($file == '.' || $file == '..') continue;
-		// Rekursiv, If dir: GoodZipArchive::addDir(), else ::File();
-			$do = (filetype( $location . $file) == 'dir') ? 'addDir' : 'addFile';
-			$this->$do($location . $file, $name . $file);
-		}
-	} 
-} // tempclass_GoodZipArchive
-
+#region TRANSLATIONS
 class tempclass_translations {
 	#region TRANSLATIONS DB create
 	/*
@@ -7921,7 +7324,7 @@ class tempclass_translations {
 			return $assoc;
 		}
 	}
-	#endregion ----TranslationsDB-----
-} // tempclass_translations
+}
+#endregion tempclass_translations
 
 }// if-class
