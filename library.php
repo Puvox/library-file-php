@@ -2584,6 +2584,13 @@ class library
 	public function checked_if_value($array, $key){
 		return ( $this->array_value($array, $key)  ? ' checked="checked"' : '');
     }
+	public static function if_checked($value){
+		return ( $value ? ' checked="checked"' : '');
+    }
+
+	public static function is_color_string($color){
+		return preg_match('/^#([a-f0-9]{3}){1,2}$/i', $color);
+	}
 	// ##################################
 
 	
