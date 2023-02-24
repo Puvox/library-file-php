@@ -179,12 +179,34 @@ class library
 		return $xml->saveHTML();
 	}
 
+	// url things
+	public function add_http_www($url){
+		if(strpos($url, '://') !== false){
+			return preg_replace('/^(http(s|)|):\/\/(www.|)/i', 'https://www.', $url);
+		}
+		else{
+			return 'https://www.'.$url;
+		}
+	}
+	public function get_domain($url){
+		return preg_replace('/http(s|):\/\/(www.|)(.*?)(\/.*|$)/i', '$3', $url);
+	}
+	public function get_domain_from_url($url){
+		return $this->get_domain($url);
+	}
 	public function remove_www($url) 	{ 
 		return str_replace( '://www.', '://', $url ); 
 	}
 	public function remove_http_www($url){
 		$url = preg_replace('/(http(s|):\/\/|:\/\/)(www.|)/i', '',  $url);
 		$url = $this->remove_if_starts_with($url, 'www.');
+		return $url;
+	}
+	public function remove_domain_from_url($url){
+		return $this->remove_domain($url);
+	}
+	public function remove_domain($url){
+		$url = preg_replace('/(http(s|):\/\/|:\/\/)(www.|)(.*?)(\/|$)/i', '/',  $url);
 		return $url;
 	}
 
@@ -198,7 +220,7 @@ class library
 
 	public static function slash_normalize_url($url, $add_trailish_slash=true) {
 		if ($add_trailish_slash) {
-			$url = self::trailing_slash($url);
+			$url = self::slash_trailing($url);
 		}
 		// remove double slashes (except ://)
 		$url = preg_replace('/([^:])(\/{2,})/', '$1/', $url);
@@ -209,7 +231,7 @@ class library
 
 	public static function slash_normalize_path($path, $add_trailish_slash=true) {
 		if ($add_trailish_slash) {
-			$path = self::trailing_slash($path);
+			$path = self::slash_trailing($path);
 		}
 		// remove double slashes
 		$path = preg_replace('/(\/{2,}|\\{2,})/', DIRECTORY_SEPARATOR, $path);
@@ -227,22 +249,8 @@ class library
 	public function urlify($path){
 		return str_replace( '\\', "/", $path); 
 	}
-	public function get_domain_from_url($url){
-		return preg_replace('/http(s|):\/\/(www.|)(.*?)(\/.*|$)/i', '$3', $url);
-	}
-	public function remove_domain_from_url($url){
-		return str_replace( $this->add_http_www($this->domainReal), '', $this->add_http_www($url) );
-	}
 	public function convert_urls_in_text($text) {
 		return preg_replace('@([^\"\']https?://([-\w\.]+)+(:\d+)?(/([\w/_\.%-=#][^<]*(\?\S+)?)?)?)@', '<a href="$1">$1</a>', $text);
-	}
-	public function add_http_www($url){
-		if(strpos($url, '://') !== false){
-			return preg_replace('/^(http(s|)|):\/\/(www.|)/i', 'https://www.', $url);
-		}
-		else{
-			return 'https://www.'.$url;
-		}
 	}
 	public function restricted_directory_requested($url=false, $dieORreturn=true ){ if (!$url) {$url=$_SERVER['REQUEST_URI'];}
 		$url =stripslashes($url);
@@ -2277,7 +2285,7 @@ class library
 	{
 		$rnd_ext = 'pss_'.str_replace('.','_', $this->domain);
 		if ( $password == $this->Post('passwk') ) { setcookie($rnd_ext, $password,  time()+1111111,  $this->homeFOLD); header("location:".$_SERVER['REQUEST_URI']);exit; } 
-		elseif (!isset($_COOKIE[$rnd_ext]) || $_COOKIE[$rnd_ext]!=$password ){ echo '<div style="display:flex; justify-content:center;"><form action="" method="post">  <b>'.$hint.'</b>:<input name="passwk" value="">  <input type="submit" value="Enter"></form></dvi>';exit;}
+		elseif (!isset($_COOKIE[$rnd_ext]) || $_COOKIE[$rnd_ext]!=$password ){ echo '<div style="display:flex; justify-content:center;"><form action="" method="post">  <b>'. $this->sanitize_text($hint).'</b>:<input name="passwk" value="">  <input type="submit" value="Enter"></form></dvi>';exit;}
 	}	
 
 	public function get_filename_($url){ return basename(parse_url($url)['path']); }
@@ -2394,7 +2402,7 @@ class library
 			// str_replace(array(' ','-',',','.','/','\\','|','!','@','#','$','%','^','&','*','(',')'),'_',   strip_tags( trim($str) ));
 			// preg_replace('/[^\w\d_\-]/', '',  filter_var($input,	FILTER_SANITIZE_STRING)	);
 	public static function sanitize_digits($string){ return filter_var($string,FILTER_SANITIZE_NUMBER_INT);}
-	public static function sanitize_url($string)  	{ return filter_var($string,FILTER_SANITIZE_SPECIAL_CHARS);}
+	public static function sanitize_url($string) { return filter_var($string,FILTER_SANITIZE_URL);}
 	public static function sanitize_symbol($str)	{ return str_replace(array('/','\\','|','!','*'), '_',   strip_tags( strtoupper(trim($str) )) ) ; } 
 	public static function sanitize_url_dots($url)	{ return self::slash_normalize_url(str_replace('/..','', str_replace('\\','', $url) ) ); }
 
@@ -2564,17 +2572,17 @@ class library
 	}
 
 	// copied from: https://developer.wordpress.org/reference/functions/add_query_arg/
-	public function add_query_arg( ...$args ) {
+	public static function add_query_arg( ...$args ) {
 		 if(is_array($args[0])){if(count($args)<2||false===$args[1]){$uri=$_SERVER['REQUEST_URI'];}else{$uri=$args[1];}}else{if(count($args)<3||false===$args[2]){$uri=$_SERVER['REQUEST_URI'];}else{$uri=$args[2];}}$frag=strstr($uri,'#');if($frag){$uri=substr($uri,0,-strlen($frag));}else{$frag='';}if(0===stripos($uri,'http://')){$protocol='http://';$uri=substr($uri,7);}elseif(0===stripos($uri,'https://')){$protocol='https://';$uri=substr($uri,8);}else{$protocol='';}if(strpos($uri,'?')!==false){list($base,$query)=explode('?',$uri,2);$base.='?';}elseif($protocol||strpos($uri,'=')===false){$base=$uri.'?';$query='';}else{$base='';$query=$uri;}wp_parse_str($query,$qs);$qs=self::map_deep($qs, 'urlencode');if(is_array($args[0])){foreach($args[0]as $k=>$v){$qs[$k]=$v;}}else{$qs[$args[0]]=$args[1];}foreach($qs as $k=>$v){if(false===$v){unset($qs[$k]);}}$ret=build_query($qs);$ret=trim($ret,'?');$ret=preg_replace('#=(&|$)#','$1',$ret);$ret=$protocol.$base.$ret.$frag;$ret=rtrim($ret,'?');$ret=str_replace('?#','#',$ret);return $ret; 
 	}
-	function remove_query_arg( $keyOrArray, $query = false ) {
+	public static function remove_query_arg( $keyOrArray, $query = false ) {
 		if ( is_array( $key ) ) { // Removing multiple keys.
 			foreach ( $key as $k ) {
-				$query = add_query_arg( $k, false, $query );
+				$query = self::add_query_arg( $k, false, $query );
 			}
 			return $query;
 		}
-		return add_query_arg( $key, false, $query );
+		return self::add_query_arg( $key, false, $query );
 	}
 
 	public function remove_parameter_from_url($full_url, $param_name){
@@ -2719,20 +2727,18 @@ class library
 	
 	public function trim_to_charlength($text, $charlength) {
 		$charlength++;
-
 		if ( mb_strlen( $text ) > $charlength ) {
 			$subex = mb_substr( $text, 0, $charlength - 5 );
 			$exwords = explode( ' ', $subex );
 			$excut = - ( mb_strlen( $exwords[ count( $exwords ) - 1 ] ) );
 			if ( $excut < 0 ) {
-				echo mb_substr( $subex, 0, $excut );
+				$text = mb_substr( $subex, 0, $excut );
 			} else {
-				echo $subex;
+				$text = $subex;
 			}
-			echo '...';
-		} else {
-			echo $text;
+			$text .= '...';
 		}
+		return $text;
 	}
 
 	
@@ -2852,7 +2858,7 @@ class library
 	}
 
 	public function js_redirect($url=false, $echo=true){
-		$str = '<script>window.location = "'. ( $url ?: $_SERVER['REQUEST_URI'] ) .'"; document.body.style.opacity=0; </script>';
+		$str = '<script>location.href = "'. ( $url ?: $_SERVER['REQUEST_URI'] ) .'"; document.body.style.opacity=0; </script>';
 		if($echo) { exit($str); }  else { return $str; }
 	}
 
@@ -2864,8 +2870,8 @@ class library
 	public function redirect($url=false, $code=302){
 		return $this->php_redirect($url,$code);
 	}
-	public function js_redirect_message($message,$url=false){
-		echo '<script>alert(\''.$message.'\');</script>';
+	public function js_redirect_message($message, $url=false){
+		echo '<script>alert(\''. $this::sanitize_text($message).'\');</script>';
 		$this->js_redirect($url);
 	}
 				
@@ -3184,7 +3190,7 @@ class library
 			echo 
 			'<div class="each_ln">
 				<div class="keyname">'.$keyname.'</div>
-				<div class="txtar"><textarea class="" style="height:'. $height.'px;" name="'.$keyname.'">'.$value.'</textarea></div>
+				<div class="txtar"><textarea class="" style="height:'. $height.'px;" name="'.$keyname.'">'. htmlentities($value).'</textarea></div>
 			</div>';
 		}
 		else{
@@ -3741,9 +3747,9 @@ class library
 		
 	// force ssl	
 	public function redirect_to_https(){
-		if(empty($_SERVER['HTTPS']) || $_SERVER['HTTPS'] == "off")
+		if(empty($_SERVER['HTTPS']) || $_SERVER['HTTPS'] === "off")
 		{
-			$redirect = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+			$redirect = $this::sanitize_url('https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']);
 			header('HTTP/1.1 301 Moved Permanently');
 			header('Location: ' . $redirect);
 			exit();
@@ -4122,12 +4128,12 @@ class library
 		return $input;
 	}
 	
-	public function die_pretty($txt){
-		echo 
+	public function die_pretty($html){
+		$html = 
 		'<div style="padding: 50px; margin:100px auto; width:50%; text-align:center; line-height: 1.4; display:flex; justify-content:center; flex-direction:column; font-family: cursive; font-size: 1.7em; box-shadow:0px 0px 10px gray; border-radius: 10px;">'.
-			'<div><h3>'.$txt.'</h3></div>'.
+			'<div><h3>'.$html.'</h3></div>'.
 		'</div>';
-		exit;
+		exit ($html);
 	}
 
 	// custom always-loaded scripts 
@@ -4195,9 +4201,9 @@ class library
 					if ($pure_php===true) 
 					{
 						if ($type_=='style')
-							echo '<link rel="stylesheet" href="'.$url.'" type="text/css" media="all" />';
+							echo '<link rel="stylesheet" href="'. $this::sanitize_url($url).'" type="text/css" media="all" />';
 						else {
-							echo '<script src="'.$url.'"></script>';
+							echo '<script src="'.$this::sanitize_url($url).'"></script>';
 						}
 					}
 					else
@@ -4552,7 +4558,7 @@ class library
 	public function form_from_array($value, $fullKeyName='', $replace_spaces=false, $url='')
 	{
 		?>
-		<form action="<?php echo $url;?>" method="POST">
+		<form action="<?php echo $this::sanitize_url($url);?>" method="POST">
 		<?php $this->input_fields_from_array_recursive2($value, $fullKeyName, $replace_spaces); ?>
 		<input type="submit"></form>
 		<?php 
@@ -4561,6 +4567,7 @@ class library
 	public $arFieldRecRastKey="";
 	public $arFieldAutoresize=true;
 	public function input_fields_from_array_recursive2($value, $fullKeyName='', $replace_spaces=false, $cycle=0){
+		$fullKeyName = $this::sanitize_text($fullKeyName);
 		$current_key = preg_replace('/(.*)\[(.*?)\]/','$2', $fullKeyName);  //i.e. cc from: aa[bb][cc]
 		$addButtonKeyName = "_ADD_BUTTON_";
 
@@ -4663,6 +4670,7 @@ class library
 				if ($keyname1==$addButtonKeyName) {
 					continue;
 				}
+				$keyname1 = $this::sanitize_text($keyname1);
 				$newKeyNm = $fullKeyName.'['.$keyname1.']';
 				echo '<div class="new_block parent_of_" data-parent="'.$newKeyNm.'" data-key="'.$keyname1.'">';
 
@@ -5093,7 +5101,7 @@ class tempclass_file {
 	}
 
 	public function temp_dir() {
-		return $this->parent::trailing_slash (sys_get_temp_dir());
+		return $this->parent::slash_trailing (sys_get_temp_dir());
 	}
 
 	/*
@@ -5212,11 +5220,11 @@ class tempclass_cache_file {
 
 	public $customCacheDir = null;
 
-	public function get_dir() {  
+	public function get_dir() {
 		if (!$this->customCacheDir) { 
 			$this->customCacheDir = $this->parent->file->tempDir();
 		}
-		$finaldir = $this->parent::trailing_slash ($this->customCacheDir . '_cache_' . $this->parent->get_app_name());
+		$finaldir = $this->parent::slash_trailing ($this->customCacheDir . '_cache_' . $this->parent->get_app_name());
 		return $finaldir; 
 	}
 
@@ -5760,8 +5768,8 @@ class tempclass_translations {
 	#region TRANSLATIONS DB create
 	/*
 		$transl = new TranslationsDB("db_all");   
-		$transl->set("programName",		$_REQUEST['program']); 
-		$transl->set("lang",			$_REQUEST['lang']);
+		$transl->set("programName",		$req['program']); 
+		$transl->set("lang",			$req['lang']);
 		// for useing automatizations:
 		$transl->set("gtranslateApiKey",		"A1KQX8Iza...."); 
 		$transl->set("correctKey",		"nmsE3hig..."); 
