@@ -188,11 +188,16 @@ class library
 			return 'https://www.'.$url;
 		}
 	}
-	public function get_domain($url){
+	public function get_domain($url=null){
+		if (is_null($url))
+			$url = $this->currentURL;
 		return preg_replace('/http(s|):\/\/(www.|)(.*?)(\/.*|$)/i', '$3', $url);
 	}
 	public function get_domain_from_url($url){
 		return $this->get_domain($url);
+	}
+	public function get_domain_without_http($url=null){
+		return $this->remove_http_www($this->get_domain($url));
 	}
 	public function remove_www($url) 	{ 
 		return str_replace( '://www.', '://', $url ); 
