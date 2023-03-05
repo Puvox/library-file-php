@@ -6669,7 +6669,7 @@ class tempclass_cache_file {
 	{
 		$filePath = $this->file_path($uniqFileName);
 		if ( $this->parent->file->exists($filePath) ){
-			if ( $this->parent->file->mtime($filePath) . $expire_seconds * 1000 < time() ){
+			if ( $this->parent->file->mtime($filePath) + $expire_seconds * 1000 < time() ){
 				$this->parent->file->unlink($filePath);
 				return $defaultContent;
 			}
