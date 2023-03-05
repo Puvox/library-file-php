@@ -40,8 +40,7 @@ class library
 	public function __construct()
 	{
 		$this->file = new \Puvox\tempclass_file($this);
-		$this->cache = new \stdClass();
-		$this->cache->file = new \Puvox\tempclass_cache_file($this);
+		$this->cache = new \Puvox\tempclass_cache($this);
 		$this->init_defaults();
 	}
 
@@ -5214,6 +5213,15 @@ class tempclass_file {
 		}
 	}
 	*/
+
+} // templcass_file
+
+class tempclass_cache {
+	
+	public function __construct($parent){
+		$this->parent = $parent;
+		$this->file = new \Puvox\tempclass_cache_file($this->parent);
+	}
 
 } // templcass_file
 
