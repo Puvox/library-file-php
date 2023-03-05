@@ -6665,11 +6665,11 @@ class tempclass_cache_file {
 		return $filePath;
 	}
 	//
-	public function get($uniqFileName, $defaultContent ='', $expire_seconds=8640000, $decode = true)
+	public function get($uniqFileName, $defaultContent='', $expire_seconds=8640000, $decode = true)
 	{
 		$filePath = $this->file_path($uniqFileName);
 		if ( $this->parent->file->exists($filePath) ){
-			if ( $this->parent->file->mtime($filePath) + $expire_seconds * 1000 < time() ){
+			if ($this->parent->file->mtime($filePath) + $expire_seconds*1000 < time()*1000){
 				$this->parent->file->unlink($filePath);
 				return $defaultContent;
 			}
