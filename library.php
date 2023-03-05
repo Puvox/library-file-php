@@ -4986,6 +4986,9 @@ class library
 		}
 	} 
 
+
+
+	#region ================ INIT ================
 	public function init_defaults()
 	{
 		try{
@@ -5076,12 +5079,6 @@ class library
 		} 
 	}
 
-	public function __construct()
-	{
-		$this->file = new \Puvox\tempclass_file($this);
-		$this->cache = new \Puvox\tempclass_cache($this);
-		$this->init_defaults();
-	}
 	
 	private $privateAppName__ = null;
 	public function set_app_name ($name){ $this->privateAppName__ = $name; }
@@ -5093,6 +5090,13 @@ class library
 		return $this->privateAppName__; 
 	}
 	
+	public function __construct()
+	{
+		$this->file = new \Puvox\tempclass_file($this);
+		$this->cache = new \Puvox\tempclass_cache($this);
+		$this->init_defaults();
+	}
+	#endregion
 
 
 
