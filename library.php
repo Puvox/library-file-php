@@ -71,7 +71,7 @@ class library
 
 	public function stringify($data, $pretty=false) { 
 		if( $this->is_simple_type($data) ) {
-			if ($pretty && $this->is_JSON($array_or_txt)) {
+			if ($pretty && $this->is_json($array_or_txt)) {
 				return json_encode(json_decode($array_or_txt), JSON_PRETTY_PRINT);
 			}
 			return (!is_bool($data) ? $data : ($data? 'true':'false'));
