@@ -2953,7 +2953,7 @@ class library
 		$curMS  = $this->timeMS();
 		$goneMS = $curMS - $this->telegram_last_time;
 		if ( $goneMS < $this->telegram_interval_ms ){
-			$this->usleep( ($this->telegram_interval_ms-$goneMS) *1000 );
+			$this->sleep( $this->telegram_interval_ms - $goneMS);
 		}
 		$this->telegram_last_time = $curMS;
 
@@ -3082,7 +3082,7 @@ class library
 		// if still error, and retry allowed
 		if ($res->error && $retry && !$repeated_call)
 		{
-			$this->usleep(100000);
+			$this->sleep(100);
 			$res = $this->get_remote_data_array($arr, $force_curl, $repeated_call=true);
 		}
 		return $res;
@@ -5130,7 +5130,7 @@ class library
 			do{
 				$canWrite = flock($fp, LOCK_EX);
 				if(!$canWrite) {
-					self::sleep( 0.05 );   // Releases CPU for others
+					self::sleep( 50 );   // Releases CPU for others
 				}
 				// If the lock is not acquired and the timeout has not expired, continue to acquire the lock
 			} while((!$canWrite) && ((microtime(true) - $startTime) < $wait_for_lock_seconds ));
@@ -5881,7 +5881,7 @@ class library
 					$this->sleep(100);
 				}
 			}
-			$this->usleep(10000); // stop 100 microseconds to avoid infinity speed recursion
+			$this->sleep(30); // stop 30 MS to avoid infinity speed recursion
 		} while ($runningHandlesAmount>0);
 	   
 		//exec now
