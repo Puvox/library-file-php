@@ -35,6 +35,8 @@
 namespace Puvox;
 
 if (!class_exists('\\Puvox\\library')) {
+	
+#[\AllowDynamicProperties]
 class library
 {
 	public function constant($name) { 
@@ -6503,7 +6505,8 @@ class library
 
 
 
-
+	
+#[\AllowDynamicProperties]
 class tempclass_file {
 
 	public function __construct($parent){
@@ -6622,6 +6625,8 @@ class tempclass_file {
 
 } // templcass_file
 
+
+#[\AllowDynamicProperties]
 class tempclass_cache {
 	
 	public function __construct($parent){
@@ -6631,6 +6636,7 @@ class tempclass_cache {
 
 } // templcass_cache
 
+#[\AllowDynamicProperties]
 class tempclass_cache_file {
 
 	public function __construct($parent){
@@ -7183,6 +7189,7 @@ class tempclass_cache_file {
  
 
 #region TRANSLATIONS
+#[\AllowDynamicProperties]
 class tempclass_translations {
 	#region TRANSLATIONS DB create
 	/*
