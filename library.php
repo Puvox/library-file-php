@@ -71,6 +71,8 @@ class library
 		echo '</pre>';
 	}
 
+	public function ExceptionMessage($ex, $extended=true){ 	return "Exception Message: {$ex->getMessage()} \r\n[{$ex->getTraceAsString()}] \r\n";	}  //[{$ex->getFile()}::{$ex->getLine()}]
+
 	public function stringify($data, $pretty=false) { 
 		if( $this->is_simple_type($data) ) {
 			if ($pretty && $this->is_json($array_or_txt)) {
@@ -270,8 +272,35 @@ class library
 		return $this->array_map_deep([$this,'stripslashes_from_strings_only'] , $value ); 
 	}
 
+	// minified version of https://www.php.net/manual/en/function.realpath.php#123783
+	public function realpath($path) {
+        if(DIRECTORY_SEPARATOR !== '/') {
+            $path = str_replace(DIRECTORY_SEPARATOR, '/', $path);
+        }
+        $search = explode('/', $path);
+        $search = array_filter($search, function($part) {
+            return $part !== '.';
+        });
+        $append = array();
+        $match = false;
+        while(count($search) > 0) {
+            $match = realpath(implode('/', $search));
+            if($match !== false) {
+                break;
+            }
+            array_unshift($append, array_pop($search));
+        };
+        if($match === false) {
+            $match = getcwd();
+        }
+        if(count($append) > 0) {
+            $match .= DIRECTORY_SEPARATOR . implode(DIRECTORY_SEPARATOR, $append);
+        }
+        return $match;
+    }
+
 	// minified version of https://www.php.net/manual/en/function.realpath.php#124254
-	public static function realpath($path){
+	public static function realpath2($path){
         $path = mb_ereg_replace('\\\\|/', DIRECTORY_SEPARATOR, $path, 'msr');
         $startWithSeparator = $path[0] === DIRECTORY_SEPARATOR;
         preg_match('/^[a-z]:/', $path, $matches);
@@ -2311,6 +2340,19 @@ class library
 		return $text;
 	}
 
+    protected function parseJson($content)
+    {
+        $content = json_decode($content, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new UnexpectedValueException(sprintf(
+                "Failed to parse JSON response: %s",
+                json_last_error_msg()
+            ));
+        }
+
+        return $content;
+    }
 
 	public function translate__DAY($text,$target_lang='') {	
 		if (in_array($text, array('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')) ) {
@@ -6242,7 +6284,26 @@ class library
 	// this function can be used onto already OBTAINED-DATA, to convert the "relative" paths to the external domain automatically:
 	//														i.e.:   src="./file.jpg"  ----->  src="http://example.com/file.jpg" 
 	// url_corrections_for_content_HELPER
-	public function fixed_domain_helper( $content, $domain_or_url ) {  
+	public function replaceRelativePaths($content, $url) {
+		$parsed = parse_url($url);
+		$scheme = $parsed['scheme'];
+		$url_base = $scheme . '://' . $parsed['host'];
+		$url_dir = $url_base . ($parsed['path'] ?? '');
+		// add dir to href="./whatever" or href="/whatever"
+		$new_content = preg_replace_callback('/(src|href)="(\.\/|\/|:\/\/)([^"]+)"/', function($matches) use ($url_base, $url_dir, $scheme){
+			// array(4):  "src="./dir/file.css""  ,   "src"  ,   "./" ,  "/dir/file.css"
+			if (count($matches) === 4) {
+				// todo: add dir to href="mypage.html"
+				if ($matches[2] === './') return $matches[1] . '="' . $url_dir  . '/' . $matches[3] . '"';
+				else if ($matches[2] === '/') return $matches[1] . '="' . $url_base . '/' . $matches[3] . '"'; 
+				else if ($matches[2] === '://') return $matches[1] . '="' . $scheme . $matches[2] . $matches[3] . '"';
+			}
+			return $matches[0];
+		}, $content);
+		return $new_content;
+	}
+
+    public function fixed_domain_helper( $content, $domain_or_url ) {  
 		$GLOBALS['rdgr']['parsed_url']			= parse_url($domain_or_url);
 		$GLOBALS['rdgr']['urlparts']['domain_X']= $GLOBALS['rdgr']['parsed_url']['scheme'].'://'.$GLOBALS['rdgr']['parsed_url']['host'];
 		$GLOBALS['rdgr']['urlparts']['path_X']	= stripslashes(dirname($GLOBALS['rdgr']['parsed_url']['path']).'/'); 
