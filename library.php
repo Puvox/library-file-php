@@ -6628,11 +6628,13 @@ class tempclass_file {
 		if(!is_dir($dirPath)){
 			//at first, recursively create parent directory if doesn't exist
 			$parent = dirname($dirPath);
-    		$permissions_final = fileperms($parent) & $permissions;
-			if( $parent && !is_dir($parent) ){ $this->create_directory($parent, $permissions_final, $create); }
+			if( $parent && !is_dir($parent) ){
+				$this->create_directory($parent, $permissions, $create);
+			}
 			else {
 				try{
 					if ( is_writable( $parent ) ){
+    					$permissions_final = fileperms($parent) & $permissions;
 						return mkdir($dirPath, $permissions_final, $create); 
 					}
 				}
