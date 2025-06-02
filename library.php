@@ -488,7 +488,7 @@ class library
 
 	public function try_increase_exec_time($seconds, $memory=null){
 		if( ! $this-> safemode_basedir_set() ) {
-			if(!is_null($memory)) $this->try_increase_memory($memory);
+			if(!is_null($memory)) $this->set_memory_limit($memory);
 			return ini_set('max_execution_time', $seconds); //stackoverflow.com/questions/8914257
 		}
 		return false;
@@ -1712,7 +1712,14 @@ class library
 		return self::array_value($array, $key_last, null);
 	}
 
-	public function array_sort_by_key($array, $key, $remove_current= false){
+	public function array_sort_by_key($array, $key){
+		$new = $array;
+		usort($new, function($a, $b) use ($key) { return is_array($a) ? $a[$key] <=> $b[$key] : $a->$key <=> $b->$key; } );
+		return $new;
+	}
+	
+	
+	public function array_sort_by_key3($array, $key, $remove_current= false){
 		$remaining =  array_splice ($array, $this->index_of_key($array, $key));
 		if($remove_current){
 			$array[$key]= $remaining[$key];
@@ -1732,6 +1739,9 @@ class library
 		else
 			throw new \Exception("Multisort failed");
 	}
+
+
+
 
 	//in multi dimensional array
 	public function array_find_by_key_value($array, $key, $value, $defaultValue = []){
@@ -2149,7 +2159,7 @@ class library
 	public function get_extension($fileUrl)
 	{
 		$array=explode('.', basename(parse_url($fileUrl)['path']));
-		return $array[count($array)-1]; 
+		return $array[count($array)-1];
 	}
 	public function filename($fileUrl)
 	{
@@ -4593,7 +4603,7 @@ class library
 	public function set_log_dir($dir)
 	{
 		$this->logDir = $dir;
-		$this->mkdir($this->logDir);
+		$this->file->create_directory($this->logDir);
 	}
 
 	public function form_from_array($value, $fullKeyName='', $replace_spaces=false, $url='')
@@ -5047,7 +5057,7 @@ class library
 			$this->https			= $this->is_cli ? 'https://': ( $this->is_https ? 'https://' : 'http://');
 			$this->domainCurrent	= $this->is_cli ? '' 		: (!empty($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '');
 			$this->domain			= $this->is_cli ? '' 		: $this->https . $this->domainCurrent;
-			$this->requestURL		= $this->is_cli ? '' 		: $this->array_value($_SERVER,'REQUEST_URI'); $this->requestURI=$this->requestURL;
+			$this->requestURL		= $this->is_cli ? '' 		: $this->array_value($_SERVER,'REQUEST_URI'); $this->requestURI       = $this->requestURL;
 			$this->currentURL		= $this->is_cli ? '' 		: $this->domain.$this->requestURL; 
 			$this->domainCurrentWithoutPort=$this->is_cli ? ''  : $this->array_value( parse_url($this->currentURL),'host');
 			$this->is_localhost     = $this->is_cli ? false 	: $this->is_localhost();
@@ -5163,7 +5173,7 @@ class library
 	public function file_put_contents($path, $content, $third = null)
 	{
 		$dir = dirname($path);
-		if(!is_dir($dir))  $this->create_directory($dir);
+		if(!is_dir($dir))  $this->file->create_directory($dir);
 		$path = $this->realpath($path);  
 		$content = is_array($content) || is_object($content) ? json_encode($content) : $content; 
 		 // is_writable( $path ) doesn't work well, sometimes returns false when it can write
@@ -5622,7 +5632,7 @@ class library
 				return $plugins;
 			}
 			add_filter("option_active_plugins", "'.$funcName.'" );';
-			if ( ! is_dir(WPMU_PLUGIN_DIR) ) $this->mkdir(WPMU_PLUGIN_DIR);
+			if ( ! is_dir(WPMU_PLUGIN_DIR) ) $this->file->create_directory(WPMU_PLUGIN_DIR);
 			//if ( ! file_exists($targetFile)) 
 			if ($this->file_get_contents($targetFile) != $content)
 			{
@@ -5802,7 +5812,7 @@ class library
 	public function save_logs($dirname= false) 
 	{
 		$currUrl = $_SERVER['REQUEST_URI'];
-		$dir = $dirname ? $dirname : $this->baseDIR .'/___l';	if (!is_dir($dir)) {  mkdir($dir, 0755, true); }
+		$dir = $dirname ? $dirname : $this->baseDIR .'/___l';	if (!is_dir($dir)) {  $this->file->create_directory($dir, 0755, true); }
 		
 		//create index to hide directory listing (both for Apache/Nginx)
 		$index			=$dir.'/index.html';
@@ -6618,15 +6628,18 @@ class tempclass_file {
 		if(!is_dir($dirPath)){
 			//at first, recursively create parent directory if doesn't exist
 			$parent = dirname($dirPath);
-			if( $parent && !is_dir($parent) ){ $this->create_directory($parent, $permissions, $create); }
+    		$permissions_final = fileperms($parent) & $permissions;
+			if( $parent && !is_dir($parent) ){ $this->create_directory($parent, $permissions_final, $create); }
 			else {
-				if ( is_writable( $parent ) ){
-					return mkdir($dirPath, $permissions, $create); 
+				try{
+					if ( is_writable( $parent ) ){
+						return mkdir($dirPath, $permissions_final, $create); 
+					}
 				}
-				else{
-					var_dump("No permission to create directory: $parent");
-					return false;
+				catch(\Throwable $e){
 				}
+				var_dump("No permission to create directory: $parent");
+				return false;
 			}
 		}
 		return true;
