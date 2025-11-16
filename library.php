@@ -5376,17 +5376,37 @@ class library
 	}
 
 
-	public function download_file($filepath=true, $value=null, $output_file_name=''){
-		$content= $filepath ? $this->file_get_contents($value) :  $value;
-		ob_get_clean();
-		header('Content-Description: File Transfer');
-		header('Content-Type: application/octet-stream');
-		header('Content-Disposition: attachment; filename='.$output_file_name);
-		header('Content-Transfer-Encoding: binary');
-		header('Expires: 5');
+	public function download_file($file_path_or_content, $output_file_name=null, $value_is_content=false){
+		if ($value_is_content) {
+			// Handle content string
+			$content = $file_path_or_content;
+			$filename = $output_file_name ?: 'download.txt'; // Default name needed
+			$filesize = strlen($content);
+			// Try to detect MIME type from content
+			$finfo = new \finfo(FILEINFO_MIME_TYPE);
+			$mime_type = $finfo->buffer($content) ?: 'application/octet-stream';
+		} else {
+			// Handle file path
+			if (!file_exists($file_path_or_content)) {
+				http_response_code(404);
+				die('File not found.');
+			}
+			$filename = $output_file_name ?: basename($file_path_or_content);
+			$filesize = filesize($file_path_or_content);
+			$mime_type = mime_content_type($file_path_or_content) ?: 'application/octet-stream';
+		}
+		// Common headers
+		header('Content-Type: ' . $mime_type);
+		header('Content-Disposition: attachment; filename="' . $filename . '"');
+		header('Content-Length: ' . $filesize);
 		header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
-		header('Pragma: public');
-		ob_clean();	flush(); echo $content;
+		header('Expires: 0');
+		// Output
+		if ($value_is_content) {
+			echo $file_path_or_content;
+		} else {
+			readfile($file_path_or_content);
+		}
 		exit;
 	}
 
@@ -5408,26 +5428,6 @@ class library
 		header('Content-Length: '.filesize($path));
 		header("Content-Disposition: attachment; filename=\"".basename($path)."\"");
 		readfile($path);
-		exit;
-	}
-
-	public function download_file($file_path) {
-		if (!file_exists($file_path)) {
-			http_response_code(404);
-			die('File not found.');
-		}
-		// file info
-		$filename = basename($file_path);
-		$filesize = filesize($file_path);
-		$mime_type = mime_content_type($file_path) ?: 'application/octet-stream';
-		// headers
-		header('Content-Type: ' . $mime_type);
-		header('Content-Disposition: attachment; filename="' . $filename . '"');
-		header('Content-Length: ' . $filesize);
-		header('Cache-Control: private');  // Prevent caching issues
-		header('Pragma: private');
-		//
-		readfile($file_path);
 		exit;
 	}
 
