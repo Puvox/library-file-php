@@ -5411,6 +5411,26 @@ class library
 		exit;
 	}
 
+	public function download_file($file_path) {
+		if (!file_exists($file_path)) {
+			http_response_code(404);
+			die('File not found.');
+		}
+		// file info
+		$filename = basename($file_path);
+		$filesize = filesize($file_path);
+		$mime_type = mime_content_type($file_path) ?: 'application/octet-stream';
+		// headers
+		header('Content-Type: ' . $mime_type);
+		header('Content-Disposition: attachment; filename="' . $filename . '"');
+		header('Content-Length: ' . $filesize);
+		header('Cache-Control: private');  // Prevent caching issues
+		header('Pragma: private');
+		//
+		readfile($file_path);
+		exit;
+	}
+
 	
 
 	public function check_analytics()
@@ -6624,25 +6644,11 @@ class tempclass_file {
 
 	//public function mkdir($dest, $permissions=0755, $create=true){ return $this->mkdir_recursive($dest, $permissions, $create); }
 	//public function mkdir_recursive(
-	public function create_directory($dirPath, $permissions=0755, $create=true) {
+	public function create_directory($dirPath, $permissions=0755) {
 		if(!is_dir($dirPath)){
 			//at first, recursively create parent directory if doesn't exist
-			$parent = dirname($dirPath);
-			if( $parent && !is_dir($parent) ){
-				$this->create_directory($parent, $permissions, $create);
-			}
-			else {
-				try{
-					if ( is_writable( $parent ) ){
-    					$permissions_final = fileperms($parent) & $permissions;
-						return mkdir($dirPath, $permissions_final, $create); 
-					}
-				}
-				catch(\Throwable $e){
-				}
-				var_dump("No permission to create directory: $parent");
-				return false;
-			}
+			// $permissions_final = fileperms(dirname($dirPath)) & $permissions;
+			return mkdir($dirPath, $permissions, true);
 		}
 		return true;
 	}
