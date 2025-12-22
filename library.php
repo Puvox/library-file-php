@@ -5017,7 +5017,7 @@ class library
 	}
 	
 	public function zip_folder ($input_folder, $output_zip_file) {
-		$zipClass = new ZipArchive();
+		$zipClass = new \ZipArchive();
 		if($input_folder !== false && $output_zip_file !== false)
 		{
 			$res = $zipClass->open($output_zip_file, \ZipArchive::CREATE);
