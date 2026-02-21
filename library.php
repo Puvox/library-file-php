@@ -2440,7 +2440,7 @@ class library
 	public static function sanitize_key($key, $use_dash=false ){ return preg_replace( '/[^a-z0-9_\-]/', ($use_dash===true ? "_": (is_string($use_dash) ? $use_dash: "") ), strtolower(trim($key) )); }  //same as wp
 	public static function sanitize_key_($key){ return self::sanitize_key_dashed($key); }
 	public static function sanitize_key_dashed($str){ return self::str_replace_recursive('__', '_',  self::sanitize($str, true) ); }
-	public static function sanitize_text($str,$use_dash=false) { return preg_replace("/[^a-zA-Z0-9\!\@\#\$\%\^\&\*\(\)\-\_\+\=\,\.\/\?\;\[\]\{\}\|\s]+/", ($use_dash ? "_":""), trim($str)); }	 //  \= \/ 
+	public static function sanitize_text($str,$use_dash=false) { return preg_replace("/[^a-zA-Z0-9\!\@\#\$\%\^\&\*\(\)\-\_\+\=\,\.\/\?\;\:\[\]\{\}\|\s]+/", ($use_dash ? "_":""), trim($str)); }	 //  \= \/ 
 	//Try this to remove everything except a-z, A-Z and 0-9, -, _, .
 	public static function sanitize_nonoword($text)		{ return preg_replace('/\W/si','',$text); }   
 	public static function sanitize_alhpabet($key){ return preg_replace( '/[^a-zA-Z]/',"", $key); }
