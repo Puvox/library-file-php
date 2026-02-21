@@ -5016,7 +5016,74 @@ class library
 		return ["value"=>$lowest, "index"=>$index];
 	}
 	
-	public function zip_folder ($input_folder, $output_zip_file) {
+	public function zip_folder($input_folder, $output_zip_file, $include_folder_name = true) {
+		if (!is_dir($input_folder)) {
+			throw new \Exception('Input folder does not exist: ' . $input_folder);
+		}
+
+		$outDir = dirname($output_zip_file);
+		if (!is_dir($outDir)) {
+			if (!@mkdir($outDir, 0775, true) && !is_dir($outDir)) {
+				throw new \Exception('Cannot create output directory: ' . $outDir);
+			}
+		}
+		if (!is_writable($outDir)) {
+			throw new \Exception('Output directory is not writable: ' . $outDir);
+		}
+
+		$rootPath = realpath($input_folder);
+		if ($rootPath === false) {
+			throw new \Exception('realpath() failed for: ' . $input_folder);
+		}
+		$baseName = basename($rootPath);
+
+		$zip = new \ZipArchive();
+		$res = $zip->open($output_zip_file, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+		if ($res !== true) {
+			throw new \Exception('Could not create zip archive (code ' . $res . '): ' . $zip->getStatusString());
+		}
+
+		$iterator = new \RecursiveIteratorIterator(
+			new \RecursiveDirectoryIterator(
+				$rootPath,
+				\FilesystemIterator::SKIP_DOTS | \FilesystemIterator::FOLLOW_SYMLINKS
+			),
+			\RecursiveIteratorIterator::LEAVES_ONLY
+		);
+
+		// Resolve the exact path of the output zip (to skip if inside root)
+		$outRealDir = realpath($outDir);
+		$outputReal = $outRealDir ? $outRealDir . DIRECTORY_SEPARATOR . basename($output_zip_file) : null;
+
+		foreach ($iterator as $fileInfo) {
+			if ($fileInfo->isDir()) continue;
+
+			$filePath = $fileInfo->getRealPath();
+			if ($filePath === false) continue;
+
+			// Avoid adding the archive itself if destination is inside input folder
+			if ($outputReal && $filePath === $outputReal) continue;
+
+			$relativePath = substr($filePath, strlen($rootPath) + 1);
+			$zipPath = $include_folder_name ? ($baseName . '/' . $relativePath) : $relativePath;
+			$zipPath = str_replace('\\', '/', $zipPath); // normalize for zip entries
+
+			if (!$zip->addFile($filePath, $zipPath)) {
+				throw new \Exception('Failed to add file to archive: ' . $filePath);
+			}
+		}
+
+		if (!$zip->close()) {
+			throw new \Exception('Failed to finalize zip archive.');
+		}
+
+		if (!file_exists($output_zip_file) || filesize($output_zip_file) === 0) {
+			throw new \Exception('Zip file not created or is empty: ' . $output_zip_file);
+		}
+		return $output_zip_file;
+	}
+
+	public function zip_folder2 ($input_folder, $output_zip_file) {
 		$zipClass = new \ZipArchive();
 		if($input_folder !== false && $output_zip_file !== false)
 		{
