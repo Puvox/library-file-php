@@ -2464,8 +2464,8 @@ class library
 
 	public static function sanitize_text_field($text)
 	{
-		if(function_exists('sanitize_text_field'))
-			return sanitize_text_field($text);
+		if(function_exists('\sanitize_text_field'))
+			return \sanitize_text_field($text);
 		else
 			return self::sanitize_text($text);
 	}
@@ -2479,13 +2479,13 @@ class library
 				if ( is_array( $value ) ) {
 					$value = self::sanitize_text_field_recursive($value);
 				} else {
-				   $value = stripslashes(sanitize_text_field($value));
+				   $value = stripslashes(self::sanitize_text_field($value));
 				}
 				$data[$key] = $value;
 			}
 			return $data;
 		}
-		return sanitize_text_field($data);
+		return self::sanitize_text_field($data);
 	}
 
 	public static function sanitize_comma_array($string, $type="key")
