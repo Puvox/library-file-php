@@ -4493,7 +4493,7 @@ class library
 		$new=[];
 		foreach($ar as $key=>$val)
 		{
-			$new[ $this->sanitize_text_field($val["name"]) ] = $this->sanitize_text_field($val["value"]);
+			$new[ self::sanitize_text_field($val["name"]) ] = self::sanitize_text_field($val["value"]);
 		}
 		return $new;
 	}
