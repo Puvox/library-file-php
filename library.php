@@ -6065,7 +6065,7 @@ class library
 	}
 
 
-	public function curl_fetch_multi_2(array $urls_unique, int $max_connections = 100, array $additional_curlopts = null)
+	public function curl_fetch_multi_2(array $urls_unique, int $max_connections = 100, array $additional_curlopts = [])
 	{
 		// $urls_unique = array_unique($urls_unique);
 		$ret = array();
