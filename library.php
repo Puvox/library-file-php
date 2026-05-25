@@ -385,14 +385,8 @@ class library
 	public function microtime()	{ return $this->microtime_float();	}
 
 	//  if ( is_admin() && file_exists($lib_start=__DIR__."/$name") && !defined("_puvox_machine_") ) { rename($lib_start, $lib_final); } require_once($lib_final);
-	public static function seconds(){ return time(); }
-	public static function milliseconds(){ return round(microtime(true)*1000); }
 	public static function time_ms(){ return self::milliseconds(); }
-	
-	public static function yyyymmdd($time){
-		return strtotime(date('Y-m-d', $time));
-	}
-	public static function current_datetime($time='', $MS=false){
+		public static function current_datetime($time='', $MS=false){
 		$format = 'Y-m-d H:i:s'.($MS?'.v':'') ;
 		return ( !empty($time) ? gmdate($format, $time) : gmdate($format) );
 	}
@@ -982,7 +976,7 @@ class library
 		}
 	}
 
-	public static function in_array($needle, $haystack, $case_sensitive=true) {
+	public static function in_array_casesensitive($needle, $haystack, $case_sensitive=true) {
 		return ( $case_sensitive ? in_array($needle, self::array_values($haystack)) : in_array(strtolower($needle), array_map('strtolower', $haystack)) );
 	}
 
@@ -1595,11 +1589,6 @@ class library
 
 	public function array_is_associative(array $array) {
 		return count(array_filter(array_keys($array), 'is_string')) > 0;
-	}
-	
-	public function is_associative(array $arr){
-		if (array() === $arr) return false;
-		return array_keys($arr) !== range(0, count($arr) - 1);
 	}
 	
 	public function array_get_by_subkey($array, $subkey, $subvalue){
@@ -2717,7 +2706,7 @@ class library
 	public function cut__my($text, $chars, $points = "...") {  $text = strip_tags($text);	if( strlen($text) <= $chars) { return $text;} else { return mb_strimwidth($text,0,$chars, $points,'utf-8'); } }
 	public function trim_string($text, $chars, $points = "...") {  if( strlen($text) <= $chars) { return $text;} else { return mb_strimwidth($text,0, $chars, $points,'utf-8'); } }
 
-	public function truncate($string, $width, $unicode = true){
+	public function truncate_string($string, $width, $unicode = true){
 		if (mb_str_word_count($string) > $width) {
 			$string= preg_replace('/((\w+\W*|| [\p{L}]+\W*){'.($width-1).'}(\w+))(.*)/', '${1}', $string);
 		}
@@ -6659,6 +6648,673 @@ class library
 	// ################# END - CUSTOM FUNCTIONS #####################
 	// ##############################################################
 
+
+	// from CCXT
+	
+    public static function totp($key) {
+        $noSpaceKey = str_replace(' ', '', $key);
+        $encodedKey = static::base32_decode($noSpaceKey);
+        $epoch = floor(time() / 30);
+        $encodedEpoch = pack('J', $epoch);
+        $hmacResult = static::hmac($encodedEpoch, $encodedKey, 'sha1', 'hex');
+        $hmac = [];
+        foreach (str_split($hmacResult, 2) as $hex) {
+            $hmac[] = hexdec($hex);
+        }
+        $offset = $hmac[count($hmac) - 1] & 0xF;
+        $code = ($hmac[$offset + 0] & 0x7F) << 24 | ($hmac[$offset + 1] & 0xFF) << 16 | ($hmac[$offset + 2] & 0xFF) << 8 | ($hmac[$offset + 3] & 0xFF);
+        $otp = $code % pow(10, 6);
+        return str_pad((string) $otp, 6, '0', STR_PAD_LEFT);
+    }
+
+    public function clone($obj) {
+        return is_array($obj) ? $obj : $this->deep_extend($obj);
+    }
+
+    public function parse_to_big_int($value) {
+        return intval($value);
+    }
+
+    public function string_to_chars_array ($value) {
+        return str_split($value);
+    }
+	
+    public function get_property($obj, $property, $defaultValue = null){
+        return (property_exists($obj, $property) ? $obj->$property : $defaultValue);
+    }
+
+    public function set_property2($obj, $property, $defaultValue = null){
+        $obj->$property = $defaultValue;
+    }
+
+    public function exception_message($exc, $includeStack = true) {
+        $message = '[' . get_class($exc) . '] ' . (!$includeStack ? $exc->getMessage() : $exc->getTraceAsString());
+        $length = min(100000, strlen($message));
+        return substr($message, 0, $length);
+    }
+
+    public function rand_number($size) {
+        $number = '';
+        for ($i = 0; $i < $size; $i++) {
+            $number .= mt_rand(0, 9);
+        }
+        return (int)$number;
+    }
+	
+	public static function is_json_encoded_object($input) {
+        return ('string' === gettype($input)) &&
+                // (strlen($input) >= 2) && // commented: https://github.com/ccxt/ccxt/pull/28193
+                (('{' === $input[0]) || ('[' === $input[0]));
+    }
+
+	
+    public static function split($string, $delimiters = array(' ')) {
+        return explode($delimiters[0], str_replace($delimiters, $delimiters[0], $string));
+    }
+
+    public static function strip($string) {
+        return trim($string);
+    }
+
+    public static function decimal($number) {
+        return '' + $number;
+    }
+
+    public static function valid_string($string) {
+        return isset($string) && $string !== '';
+    }
+
+    public static function valid_object_value($object, $key) {
+        return isset($object[$key]) && $object[$key] !== '' && is_scalar($object[$key]);
+    }
+
+    public static function safe_float($object, $key, $default_value = null) {
+        return (isset($object[$key]) && is_numeric($object[$key])) ? floatval($object[$key]) : $default_value;
+    }
+
+    public static function safe_string($object, $key, $default_value = null) {
+        return static::valid_object_value($object, $key) ? strval($object[$key]) : $default_value;
+    }
+
+    public static function safe_string_lower($object, $key, $default_value = null) {
+        if (static::valid_object_value($object, $key)) {
+            return strtolower(strval($object[$key]));
+        } else if ($default_value === null) {
+            return $default_value;
+        } else {
+            return strtolower($default_value);
+        }
+    }
+
+    public static function safe_string_upper($object, $key, $default_value = null) {
+        if (static::valid_object_value($object, $key)) {
+            return strtoupper(strval($object[$key]));
+        } else if ($default_value === null) {
+            return $default_value;
+        } else {
+            return strtoupper($default_value);
+        }
+        return static::valid_object_value($object, $key) ? strtoupper(strval($object[$key])) : $default_value;
+    }
+
+    public static function safe_integer($object, $key, $default_value = null) {
+        return (isset($object[$key]) && is_numeric($object[$key])) ? intval($object[$key]) : $default_value;
+    }
+
+    public static function safe_integer_product($object, $key, $factor, $default_value = null) {
+        return (isset($object[$key]) && is_numeric($object[$key])) ? (intval($object[$key] * $factor)) : $default_value;
+    }
+
+    public static function safe_timestamp($object, $key, $default_value = null) {
+        return static::safe_integer_product($object, $key, 1000, $default_value);
+    }
+
+    public static function safe_value($object, $key, $default_value = null) {
+        return isset($object[$key]) ? $object[$key] : $default_value;
+    }
+
+    // we're not using safe_floats with a list argument as we're trying to save some cycles here
+    // we're not using safe_float_3 either because those cases are too rare to deserve their own optimization
+
+    public static function safe_float_2($object, $key1, $key2, $default_value = null) {
+        $value = static::safe_float($object, $key1);
+        return isset($value) ? $value : static::safe_float($object, $key2, $default_value);
+    }
+
+    public static function safe_string_2($object, $key1, $key2, $default_value = null) {
+        $value = static::safe_string($object, $key1);
+        return static::valid_string($value) ? $value : static::safe_string($object, $key2, $default_value);
+    }
+
+    public static function safe_string_lower_2($object, $key1, $key2, $default_value = null) {
+        $value = static::safe_string_lower($object, $key1);
+        return static::valid_string($value) ? $value : static::safe_string_lower($object, $key2, $default_value);
+    }
+
+    public static function safe_string_upper_2($object, $key1, $key2, $default_value = null) {
+        $value = static::safe_string_upper($object, $key1);
+        return static::valid_string($value) ? $value : static::safe_string_upper($object, $key2, $default_value);
+    }
+
+    public static function safe_integer_2($object, $key1, $key2, $default_value = null) {
+        $value = static::safe_integer($object, $key1);
+        return isset($value) ? $value : static::safe_integer($object, $key2, $default_value);
+    }
+
+    public static function safe_integer_product_2($object, $key1, $key2, $factor, $default_value = null) {
+        $value = static::safe_integer_product($object, $key1, $factor);
+        return isset($value) ? $value : static::safe_integer_product($object, $key2, $factor, $default_value);
+    }
+
+    public static function safe_timestamp_2($object, $key1, $key2, $default_value = null) {
+        return static::safe_integer_product_2($object, $key1, $key2, 1000, $default_value);
+    }
+
+    public static function safe_value_2($object, $key1, $key2, $default_value = null) {
+        $value = static::safe_value($object, $key1);
+        return isset($value) ? $value : static::safe_value($object, $key2, $default_value);
+    }
+
+    // safe_method_n family
+    public static function safe_float_n($object, $array, $default_value = null) {
+        $value = static::get_object_value_from_key_array($object, $array);
+        return (isset($value) && is_numeric($value)) ? floatval($value) : $default_value;
+    }
+
+    public static function safe_string_n($object, $array, $default_value = null) {
+        $value = static::get_object_value_from_key_array($object, $array);
+        return (static::valid_string($value) && is_scalar($value)) ? strval($value) : $default_value;
+    }
+
+    public static function safe_string_lower_n($object, $array, $default_value = null) {
+        $value = static::get_object_value_from_key_array($object, $array);
+        if (static::valid_string($value) && is_scalar($value)) {
+            return strtolower(strval($value));
+        } else if ($default_value === null) {
+            return $default_value;
+        } else {
+            return strtolower($default_value);
+        }
+    }
+
+    public static function safe_string_upper_n($object, $array, $default_value = null) {
+        $value = static::get_object_value_from_key_array($object, $array);
+        if (static::valid_string($value) && is_scalar($value)) {
+            return strtoupper(strval($value));
+        } else if ($default_value === null) {
+            return $default_value;
+        } else {
+            return strtoupper($default_value);
+        }
+    }
+
+    public static function safe_integer_n($object, $array, $default_value = null) {
+        $value = static::get_object_value_from_key_array($object, $array);
+        return (isset($value) && is_numeric($value)) ? intval($value) : $default_value;
+    }
+
+    public static function safe_integer_product_n($object, $array, $factor, $default_value = null) {
+        $value = static::get_object_value_from_key_array($object, $array);
+        return (isset($value) && is_numeric($value)) ? (intval($value * $factor)) : $default_value;
+    }
+
+    public static function safe_timestamp_n($object, $array, $default_value = null) {
+        return static::safe_integer_product_n($object, $array, 1000, $default_value);
+    }
+
+    public static function safe_value_n($object, $array, $default_value = null) {
+        $value = static::get_object_value_from_key_array($object, $array);
+        return isset($value) ? $value : $default_value;
+    }
+
+    public static function get_object_value_from_key_array($object, $array) {
+        foreach($array as $key) {
+            if (isset($object[$key]) && $object[$key] !== '') {
+                return $object[$key];
+            }
+        }
+        return null;
+    }
+
+    public static function truncate($number, $precision = 0) {
+        $decimal_precision = pow(10, $precision);
+        return floor(floatval($number * $decimal_precision)) / $decimal_precision;
+    }
+
+    public static function truncate_to_string($number, $precision = 0) {
+        if ($precision > 0) {
+            $string = sprintf('%.' . ($precision + 1) . 'F', floatval($number));
+            list($integer, $decimal) = explode('.', $string);
+            $decimal = trim('.' . substr($decimal, 0, $precision), '0');
+            if (strlen($decimal) < 2) {
+                $decimal = '.0';
+            }
+            return $integer . $decimal;
+        }
+        return sprintf('%d', floatval($number));
+    }
+
+    public static function uuid16($length = 16) {
+        return bin2hex(random_bytes(intval($length / 2)));
+    }
+
+    public static function uuid22($length = 22) {
+        return bin2hex(random_bytes(intval($length / 2)));
+    }
+
+    public static function uuid() {
+        return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            // 32 bits for "time_low"
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+
+            // 16 bits for "time_mid"
+            mt_rand(0, 0xffff),
+
+            // 16 bits for "time_hi_and_version",
+            // four most significant bits holds version number 4
+            mt_rand(0, 0x0fff) | 0x4000,
+
+            // 16 bits, 8 bits for "clk_seq_hi_res", 8 bits for "clk_seq_low",
+            // two most significant bits holds zero and one for variant DCE1.1
+            mt_rand(0, 0x3fff) | 0x8000,
+
+            // 48 bits for "node"
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
+    }
+
+    public static function parse_timeframe($timeframe) {
+        $amount = substr($timeframe, 0, -1);
+        $unit = substr($timeframe, -1);
+        $scale = 1;
+        if ($unit === 'y') {
+            $scale = 60 * 60 * 24 * 365;
+        } elseif ($unit === 'M') {
+            $scale = 60 * 60 * 24 * 30;
+        } elseif ($unit === 'w') {
+            $scale = 60 * 60 * 24 * 7;
+        } elseif ($unit === 'd') {
+            $scale = 60 * 60 * 24;
+        } elseif ($unit === 'h') {
+            $scale = 60 * 60;
+        } elseif ($unit === 'm') {
+            $scale = 60;
+        } elseif ($unit === 's') {
+            $scale = 1;
+        } else {
+            throw new NotSupported('timeframe unit ' . $unit . ' is not supported');
+        }
+        return $amount * $scale;
+    }
+
+    public static function round_timeframe($timeframe, $timestamp, $direction=ROUND_DOWN) {
+        $ms = static::parse_timeframe($timeframe) * 1000;
+        // Get offset based on timeframe in milliseconds
+        $offset = $timestamp % $ms;
+        return $timestamp - $offset + (($direction === ROUND_UP) ? $ms : 0);
+    }
+
+    public static function capitalize($string) {
+        return mb_strtoupper(mb_substr($string, 0, 1)) . mb_substr($string, 1);
+    }
+
+    public static function is_associative($array) {
+        // we can use `array_is_list` instead of old approach: (count(array_filter(array_keys($array), 'is_string')) > 0)
+        return is_array($array) && !array_is_list($array);
+    }
+
+    public static function omit($array, $keys) {
+        if (static::is_associative($array)) {
+            $result = $array;
+            if (is_array($keys)) {
+                foreach ($keys as $key) {
+                    unset($result[$key]);
+                }
+            } else {
+                unset($result[$keys]);
+            }
+            return $result;
+        }
+        return $array;
+    }
+
+    public static function unique($array) {
+        return array_unique($array);
+    }
+
+    public static function pluck($array, $key) {
+        $result = array();
+        foreach ($array as $element) {
+            if (isset($key, $element)) {
+                $result[] = $element[$key];
+            }
+        }
+        return $result;
+    }
+
+    public function filter_by($array, $key, $value = null) {
+        $result = array();
+        foreach ($array as $element) {
+            if (isset($key, $element) && ($element[$key] == $value)) {
+                $result[] = $element;
+            }
+        }
+        return $result;
+    }
+
+    public static function group_by($array, $key) {
+        $result = array();
+        foreach ($array as $element) {
+            if (isset($element[$key]) && !is_null($element[$key])) {
+                if (!isset($result[$element[$key]])) {
+                    $result[$element[$key]] = array();
+                }
+                $result[$element[$key]][] = $element;
+            }
+        }
+        return $result;
+    }
+
+    public static function index_by_safe($array, $key) {
+        // wrapper for go
+        return static::index_by($array, $key);
+    }
+
+    public static function index_by($array, $key) {
+        $result = array();
+        foreach ($array as $element) {
+            if (isset($element[$key])) {
+                $result[$element[$key]] = $element;
+            }
+        }
+        return $result;
+    }
+
+    public static function sort_by($arrayOfArrays, $key, $descending = false, $default = 0) {
+        $descending = $descending ? -1 : 1;
+        usort($arrayOfArrays, function ($a, $b) use ($key, $descending, $default) {
+            $first = isset($a[$key]) ? $a[$key] : $default;
+            $second = isset($b[$key]) ? $b[$key] : $default;
+            if ($first == $second) {
+                return 0;
+            }
+            return $first < $second ? -$descending : $descending;
+        });
+        return $arrayOfArrays;
+    }
+
+    public static function sort_by_2($arrayOfArrays, $key1, $key2, $descending = false) {
+        $descending = $descending ? -1 : 1;
+        usort($arrayOfArrays, function ($a, $b) use ($key1, $key2, $descending) {
+            if ($a[$key1] == $b[$key1]) {
+                if ($a[$key2] == $b[$key2]) {
+                    return 0;
+                }
+                return $a[$key2] < $b[$key2] ? -$descending : $descending;
+            }
+            return $a[$key1] < $b[$key1] ? -$descending : $descending;
+        });
+        return $arrayOfArrays;
+    }
+
+    public static function array_concat() {
+        return call_user_func_array('array_merge', array_filter(func_get_args(), 'is_array'));
+    }
+
+    public static function in_array($needle, $haystack) {
+        return in_array($needle, $haystack, true);
+    }
+
+    public static function to_array($object) {
+        if ($object instanceof \JsonSerializable) {
+            $object = $object->jsonSerialize();
+        }
+        return array_values($object);
+    }
+
+    public static function is_empty($object) {
+        if ($object === null) {
+            return true;
+        }
+        if (is_countable($object)) {
+            return count($object) === 0;
+        }
+        if (is_object($object)) {
+            return count(get_object_vars($object)) === 0;
+        }
+        return false;
+    }
+
+    public static function keysort($array) {
+        $result = $array;
+        ksort($result, SORT_STRING);
+        return $result;
+    }
+
+    public static function sort($array) {
+        $result = $array;
+        sort($result);
+        return $result;
+    }
+
+    public static function extract_params($string) {
+        if (preg_match_all('/{([\w-]+)}/u', $string, $matches)) {
+            return $matches[1];
+        }
+        return [];
+    }
+
+
+    public static function implode_params($string, $params) {
+        if (static::is_associative($params)) {
+            foreach ($params as $key => $value) {
+                if (gettype($value) !== 'array') {
+                    $string = implode($value, mb_split('{' . preg_quote($key) . '}', $string));
+                }
+            }
+        }
+        return $string;
+    }
+
+    public static function extend(...$args) {
+        return array_merge (...$args);
+    }
+
+    public static function deep_extend() {
+        // extend associative dictionaries only, replace everything else
+        // (optimized: https://github.com/ccxt/ccxt/pull/26277)
+        $out = null;
+        $args = func_get_args();
+
+        foreach ($args as $arg) {
+            if (is_array($arg)) {
+                if (empty($arg) || !array_is_list($arg)) {
+                    // It's associative or empty
+                    if (!is_array($out) || array_is_list($out)) {
+                        $out = [];
+                    }
+                    foreach ($arg as $k => $v) {
+                        $out[$k] = isset($out[$k]) && is_array($out[$k]) && is_array($v) && 
+                                  (empty($v) || !array_is_list($v)) && (empty($out[$k]) || !array_is_list($out[$k]))
+                            ? static::deep_extend($out[$k], $v)
+                            : $v;
+                    }
+                } else {
+                    $out = $arg;
+                }
+            } else {
+                $out = $arg;
+            }
+        }
+        return $out;
+    }
+
+    public static function sum() {
+        return array_sum(array_filter(func_get_args(), function ($x) {
+            return isset($x) ? $x : 0;
+        }));
+    }
+
+    public function aggregate($bidasks) {
+        $result = array();
+
+        foreach ($bidasks as $bidask) {
+            if ($bidask[1] > 0) {
+                $price = (string) $bidask[0];
+                $result[$price] = array_key_exists($price, $result) ? $result[$price] : 0;
+                $result[$price] += $bidask[1];
+            }
+        }
+
+        $output = array();
+
+        foreach ($result as $key => $value) {
+            $output[] = array(floatval($key), floatval($value));
+        }
+
+        return $output;
+    }
+
+    public static function urlencode_base64($string) {
+        return preg_replace(array('#[=]+$#u', '#\+#u', '#\\/#'), array('', '-', '_'), \base64_encode($string));
+    }
+
+    public function urlencode($array, $sort = false) {
+        foreach ($array as $key => $value) {
+            if (is_bool($value)) {
+                $array[$key] = var_export($value, true);
+            }
+        }
+        return http_build_query($array, '', $this->urlencode_glue, PHP_QUERY_RFC3986);
+    }
+
+    public function urlencode_nested($array) {
+        return str_replace(array('%5B', '%5D'), array('[', ']'), $this->urlencode($array));
+    }
+
+    public function urlencode_with_array_repeat($array) {
+        return preg_replace('/%5B\d*%5D/', '', $this->urlencode($array));
+    }
+
+    public function rawencode($array, $sort = false) {
+        return urldecode($this->urlencode($array));
+    }
+
+    public static function encode_uri_component($string) {
+        return urlencode($string);
+    }
+
+    public static function url($path, $params = array()) {
+        $result = static::implode_params($path, $params);
+        $query = static::omit($params, static::extract_params($path));
+        if ($query) {
+            $result .= '?' . static::urlencode($query);
+        }
+        return $result;
+    }
+
+    public static function seconds() {
+        return time();
+    }
+
+    public static function milliseconds() {
+        if (PHP_INT_SIZE == 4) {
+            return static::milliseconds32();
+        } else {
+            return static::milliseconds64();
+        }
+    }
+
+    public static function milliseconds32() {
+        list($msec, $sec) = explode(' ', microtime());
+        // raspbian 32-bit integer workaround
+        // https://github.com/ccxt/ccxt/issues/5978
+        // return (int) ($sec . substr($msec, 2, 3));
+        return $sec . substr($msec, 2, 3);
+    }
+
+    public static function milliseconds64() {
+        list($msec, $sec) = explode(' ', microtime());
+        // this method will not work on 32-bit raspbian
+        return (int) ($sec . substr($msec, 2, 3));
+    }
+
+    public static function microseconds() {
+        list($msec, $sec) = explode(' ', microtime());
+        return $sec . str_pad(substr($msec, 2, 6), 6, '0');
+    }
+
+    public static function iso8601($timestamp = null) {
+        if (!isset($timestamp)) {
+            return null;
+        }
+        if (!is_numeric($timestamp) || intval($timestamp) != $timestamp) {
+            return null;
+        }
+        $timestamp = (int) $timestamp;
+        if ($timestamp < 0) {
+            return null;
+        }
+        $result = gmdate('c', (int) floor($timestamp / 1000));
+        $msec = (int) $timestamp % 1000;
+        $result = str_replace('+00:00', sprintf('.%03dZ', $msec), $result);
+        return $result;
+    }
+
+    public static function parse_date($timestamp) {
+        return static::parse8601($timestamp);
+    }
+
+    public static function parse8601($timestamp = null) {
+        if (!isset($timestamp)) {
+            return null;
+        }
+        if (!$timestamp || !is_string($timestamp)) {
+            return null;
+        }
+        $timedata = date_parse($timestamp);
+        if (!$timedata || $timedata['error_count'] > 0 || $timedata['warning_count'] > 0 || (isset($timedata['relative']) && count($timedata['relative']) > 0)) {
+            return null;
+        }
+        if (($timedata['hour'] === false) ||
+            ($timedata['minute'] === false) ||
+            ($timedata['second'] === false) ||
+            ($timedata['year'] === false) ||
+            ($timedata['month'] === false) ||
+            ($timedata['day'] === false)) {
+            return null;
+        }
+        $time = strtotime($timestamp);
+        if ($time === false) {
+            return null;
+        }
+        $time *= 1000;
+        if (preg_match('/\.(?<milliseconds>[0-9]{1,3})/', $timestamp, $match)) {
+            $time += (int) str_pad($match['milliseconds'], 3, '0', STR_PAD_RIGHT);
+        }
+        return $time;
+    }
+
+    public static function dmy($timestamp, $infix = '-') {
+        return gmdate('m' . $infix . 'd' . $infix . 'Y', (int) round($timestamp / 1000));
+    }
+
+    public static function ymd($timestamp, $infix = '-', $fullYear = true) {
+        $yearFormat = $fullYear ? 'Y' : 'y';
+        return gmdate($yearFormat . $infix . 'm' . $infix . 'd', (int) round($timestamp / 1000));
+    }
+
+    public static function yymmdd($timestamp, $infix = '') {
+        return static::ymd($timestamp, $infix, false);
+    }
+
+    public static function yyyymmdd($timestamp, $infix = '-') {
+        return static::ymd($timestamp, $infix, true);
+    }
+
+    public static function ymdhms($timestamp, $infix = ' ') {
+        return gmdate('Y-m-d\\' . $infix . 'H:i:s', (int) round($timestamp / 1000));
+    }
 } // class
 
 
